@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>わだちログ — 走った道と寄り道の記録</title>
+<meta name="description" content="サイクリングやドライブのルートを地図に描き、立ち寄った場所の写真・動画・メモを残す記録アプリ">
+<meta name="theme-color" content="#1F2E29">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: { ink: '#1F2E29', paper: '#F3F5F1', moss: '#2F5B4B', route: '#D1206B', line: '#D5DDD7', mist: '#E7ECE8' },
+    fontFamily: { sans: ['"Zen Kaku Gothic New"', 'system-ui', 'sans-serif'], num: ['"Barlow Condensed"', '"Zen Kaku Gothic New"', 'sans-serif'] }
+  } } };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<style>
+  :root { --ink:#1F2E29; --paper:#F3F5F1; --moss:#2F5B4B; --route:#D1206B; --line:#D5DDD7; --mist:#E7ECE8; --muted:#5E6F68; --hdr:56px; }
+  html, body { height: 100%; margin: 0; }
+  body { overflow: hidden; background: var(--paper); color: var(--ink); font-family: "Zen Kaku Gothic New", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .num { font-family: "Barlow Condensed", "Zen Kaku Gothic New", sans-serif; font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 3px solid #3A8DDE; outline-offset: 2px; }
+  button { cursor: pointer; }
+  .hidden { display: none !important; }
+  .acct-name { display: none; }
+  @media (min-width: 640px) { .acct-name { display: inline; } }
+
+  /* ---------- header ---------- */
+  #appHeader { height: calc(var(--hdr) + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 14px 0; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--ink); color: #fff; position: relative; z-index: 1100; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: .04em; white-space: nowrap; }
+  .brand svg { flex: none; }
+  .acct { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.08); color: #fff; border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: 4px 12px 4px 4px; font-size: 14px; }
+  .av { width: 28px; height: 28px; border-radius: 50%; background: var(--route); display: grid; place-items: center; font-weight: 700; }
+  .menu { position: absolute; right: 0; top: calc(100% + 8px); background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 12px; min-width: 220px; padding: 6px; box-shadow: 0 12px 30px rgba(20,30,27,.2); }
+  .menu button { display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+  .menu button:hover { background: var(--mist); }
+  .menu-email { font-size: 12px; color: var(--muted); padding: 8px 12px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; word-break: break-all; }
+
+  /* ---------- layout ---------- */
+  #layout { position: absolute; top: calc(var(--hdr) + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: 0; display: flex; }
+  #panel { width: 410px; flex: none; background: var(--paper); border-right: 1px solid var(--line); display: flex; flex-direction: column; z-index: 900; }
+  #panelBody { flex: 1; overflow-y: auto; padding: 18px 18px calc(28px + env(safe-area-inset-bottom, 0px)); overscroll-behavior: contain; }
+  #panelHandle { display: none; }
+  #mapWrap { position: relative; flex: 1; }
+  #map { position: absolute; inset: 0; background: #DDE3DE; }
+  #map.picking, #map.picking.leaflet-grab, #map.picking .leaflet-interactive { cursor: crosshair; }
+  @media (max-width: 767px) {
+    #mapWrap { position: absolute; inset: 0; }
+    #panel { position: absolute; left: 0; right: 0; bottom: 0; width: auto; height: 46%; border-right: 0; border-radius: 18px 18px 0 0;
+      box-shadow: 0 -8px 28px rgba(31,46,41,.2); transition: height .25s ease; }
+    #panel[data-state="peek"] { height: 104px; }
+    #panel[data-state="full"] { height: 90%; }
+    #panelHandle { display: flex; justify-content: center; padding: 10px 0 6px; touch-action: none; flex: none; }
+    #panelHandle span { width: 44px; height: 5px; border-radius: 3px; background: #B6C2BB; }
+    #panelBody { padding-top: 4px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #panel { transition: none; } }
+
+  /* ---------- controls ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 10px; padding: 9px 15px; font-weight: 700; font-size: 14px;
+    border: 1px solid transparent; transition: background-color .15s, border-color .15s; line-height: 1.2; white-space: nowrap; text-decoration: none; }
+  .btn-route { background: var(--route); color: #fff; }
+  .btn-route:hover { background: #B51A5C; }
+  .btn-ink { background: var(--ink); color: #fff; }
+  .btn-ink:hover { background: #2C3F39; }
+  .btn-ghost { background: #fff; border-color: var(--line); color: var(--ink); }
+  .btn-ghost:hover { background: var(--mist); }
+  .btn-light { background: #fff; color: var(--ink); }
+  .btn-sm { padding: 7px 11px; font-size: 13px; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .danger { color: #B3261E; }
+  .lnk { color: var(--moss); font-weight: 700; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 4px 2px; }
+  .muted { color: var(--muted); }
+  .h2 { font-size: 20px; font-weight: 700; }
+
+  .field { display: block; margin-bottom: 14px; }
+  .field > .lbl, .field > label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .inp { width: 100%; box-sizing: border-box; border: 1px solid #C3CDC6; border-radius: 10px; padding: 10px 12px; background: #fff; font-size: 16px; color: var(--ink); font-family: inherit; }
+  .inp:focus { border-color: var(--moss); outline: 2px solid rgba(47,91,75,.25); outline-offset: 0; }
+  textarea.inp { resize: vertical; line-height: 1.7; }
+  .pw { position: relative; }
+  .pw .inp { padding-right: 46px; }
+  .eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); background: none; border: 0; }
+  .eye:hover { background: var(--mist); }
+  .ferr { color: #B3261E; font-size: 13px; min-height: 1em; margin: 4px 0 10px; white-space: pre-wrap; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .seg { display: flex; border: 1px solid #C3CDC6; border-radius: 10px; overflow: hidden; }
+  .seg label { flex: 1; text-align: center; padding: 9px 4px; font-size: 14px; cursor: pointer; border-right: 1px solid #C3CDC6; background: #fff; }
+  .seg label:last-child { border-right: 0; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--ink); color: #fff; font-weight: 700; }
+  .seg label:has(input:focus-visible) { outline: 3px solid #3A8DDE; outline-offset: -3px; }
+  .drop { display: block; border: 2px dashed #B6C2BB; border-radius: 12px; padding: 18px 14px; text-align: center; color: var(--muted); font-size: 14px; cursor: pointer; background: #fff; }
+  .drop:hover, .drop.over { border-color: var(--route); color: var(--ink); }
+  .drop.small { padding: 12px; }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 12px; }
+  .chk input { width: 18px; height: 18px; accent-color: var(--moss); }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  .tab { padding: 10px 12px; font-size: 14px; font-weight: 700; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px; background: none; }
+  .tab.on { color: var(--ink); border-bottom-color: var(--route); }
+
+  /* ---------- welcome ---------- */
+  .wtitle { font-size: 30px; line-height: 1.35; font-weight: 700; letter-spacing: .02em; margin-top: 6px; }
+  .wlead { margin-top: 12px; line-height: 1.85; font-size: 15px; color: #33443E; }
+  .try { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); line-height: 1.7; }
+  .note { font-size: 13px; background: #FFF4D6; border: 1px solid #EBD597; border-radius: 10px; padding: 10px 12px; margin-top: 14px; line-height: 1.6; }
+
+  /* ---------- trip list ---------- */
+  .trips { display: flex; flex-direction: column; gap: 8px; }
+  .trip { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .trip:hover { border-color: #9FB0A7; }
+  .trip .ti { font-size: 22px; width: 36px; height: 36px; display: grid; place-items: center; background: var(--mist); border-radius: 10px; flex: none; }
+  .trip .tb { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .trip .tt { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trip .tm { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .trip .tn { text-align: right; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+  .trip .tn b { font-size: 24px; font-weight: 600; }
+  .trip .tn small { font-size: 11px; color: var(--muted); }
+  .empty { background: #fff; border: 1px dashed #B6C2BB; border-radius: 12px; padding: 18px; line-height: 1.75; }
+
+  /* ---------- trip detail: the cycle-computer ---------- */
+  .back { font-size: 13px; font-weight: 700; color: var(--moss); background: none; border: 0; padding: 4px 0; margin-bottom: 8px; }
+  .ttl { font-size: 22px; font-weight: 700; line-height: 1.4; word-break: break-word; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .desc { font-size: 14px; line-height: 1.75; margin-top: 10px; white-space: pre-wrap; }
+  .meter { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--ink); color: #fff; border-radius: 14px; margin-top: 14px; overflow: hidden; }
+  .meter > div { padding: 12px 10px 10px; border-right: 1px solid rgba(255,255,255,.1); display: flex; flex-direction: column; }
+  .meter > div:last-child { border-right: 0; }
+  .mv { font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 34px; line-height: 1; letter-spacing: .01em; }
+  .mv small { font-size: 15px; font-weight: 500; margin-left: 2px; color: #BFD0C8; }
+  .ml { font-size: 11px; color: #9FB4AA; margin-top: 6px; }
+  .meter.empty-route .mv { color: #6F8A7E; }
+  .profile { margin-top: 10px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 4px; }
+  .profile-h { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  #profileSvg { width: 100%; height: 72px; display: block; touch-action: none; cursor: crosshair; }
+  #profileSvg .pa { fill: rgba(209,32,107,.13); }
+  #profileSvg .pl { fill: none; stroke: var(--route); stroke-width: 2; }
+  #profileSvg .pc { stroke: var(--ink); stroke-width: 1.5; }
+  .acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; }
+  .acts .btn { padding: 10px 6px; font-size: 13px; flex-direction: column; gap: 4px; white-space: normal; }
+  .acts .btn span:first-child { font-size: 18px; }
+  .subacts { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 8px; }
+
+  /* ---------- timeline ---------- */
+  .tl { list-style: none; margin: 0; padding: 0; position: relative; }
+  .tl::before { content: ""; position: absolute; left: 13px; top: 6px; bottom: 6px; width: 2px; background: repeating-linear-gradient(to bottom, var(--route) 0 6px, transparent 6px 11px); opacity: .55; }
+  .tl-item { position: relative; padding-left: 40px; margin-bottom: 16px; }
+  .tl-no { position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center;
+    font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 15px; box-shadow: 0 0 0 3px var(--paper); }
+  .tl-body { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .tl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: 100%; text-align: left; background: none; border: 0; padding: 0; }
+  .tl-title { font-weight: 700; font-size: 15px; }
+  .tl-time { font-family: "Barlow Condensed", sans-serif; font-size: 15px; color: var(--muted); white-space: nowrap; }
+  .tl-memo { font-size: 13px; line-height: 1.7; margin-top: 6px; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .tl-actions { display: flex; gap: 12px; margin-top: 4px; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .thumb { width: 60px; height: 60px; border-radius: 8px; overflow: hidden; background: var(--mist); border: 0; padding: 0; position: relative; display: grid; place-items: center; font-weight: 700; color: var(--muted); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .vid { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 16px; background: rgba(20,30,27,.35); }
+
+  /* ---------- AI ---------- */
+  .ai { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .ai-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .ai h4 { font-weight: 700; font-size: 15px; }
+  .ai-h p { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .ai-out { margin-top: 10px; font-size: 14px; }
+
+  /* ---------- map overlays ---------- */
+  #pickBanner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 800; background: var(--ink); color: #fff; border-radius: 999px;
+    padding: 8px 8px 8px 16px; display: flex; align-items: center; gap: 10px; font-size: 14px; box-shadow: 0 6px 20px rgba(20,30,27,.3); max-width: calc(100% - 100px); }
+  #pickBanner button { background: #fff; color: var(--ink); border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 13px; flex: none; }
+  #playbar { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 800; background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 8px 10px; display: flex; align-items: center; gap: 10px; box-shadow: 0 8px 24px rgba(20,30,27,.2); width: min(560px, calc(100% - 24px)); box-sizing: border-box; }
+  #playbar input[type=range] { flex: 1; accent-color: var(--route); min-width: 60px; }
+  #playbar select { border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 13px; background: #fff; }
+  #pbBtn { width: 38px; height: 38px; border-radius: 50%; background: var(--route); color: #fff; font-size: 14px; flex: none; }
+  #pbInfo { font-size: 17px; min-width: 88px; text-align: right; white-space: nowrap; }
+  .pb-x { background: none; border: 0; font-size: 20px; color: var(--muted); width: 28px; }
+  @media (max-width: 767px) {
+    #playbar { top: 10px; bottom: auto; }
+    #pickBanner { top: 10px; }
+    #pbInfo { min-width: 64px; font-size: 15px; }
+  }
+  #dropOverlay { position: absolute; inset: 12px; z-index: 850; border: 3px dashed var(--route); border-radius: 18px; background: rgba(243,245,241,.86);
+    display: grid; place-items: center; text-align: center; font-weight: 700; font-size: 18px; pointer-events: none; line-height: 1.8; }
+
+  /* ---------- markers & popups ---------- */
+  .pin-num { width: 28px; height: 28px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--ink); border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); display: grid; place-items: center; }
+  .pin-num span { transform: rotate(45deg); color: #fff; font: 600 14px "Barlow Condensed", sans-serif; }
+  .pin-photo { width: 44px; height: 44px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); background: var(--mist) center/cover no-repeat; position: relative; box-sizing: border-box; }
+  .pin-photo b { position: absolute; right: -6px; bottom: -6px; min-width: 20px; height: 20px; padding: 0 4px; box-sizing: border-box; border-radius: 10px; background: var(--ink); color: #fff;
+    font: 600 13px/20px "Barlow Condensed", sans-serif; text-align: center; border: 2px solid #fff; }
+  .pb-dot { width: 22px; height: 22px; border-radius: 50%; background: var(--route); border: 4px solid #fff; box-shadow: 0 0 0 2px var(--route), 0 3px 10px rgba(0,0,0,.35); box-sizing: border-box; }
+  .hover-dot { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid var(--ink); box-sizing: border-box; }
+  .leaflet-popup-content-wrapper { border-radius: 12px; }
+  .leaflet-popup-content { margin: 12px 14px; font-family: "Zen Kaku Gothic New", sans-serif; color: var(--ink); }
+  .pop-t { font-weight: 700; font-size: 15px; margin: 0 !important; }
+  .pop-t .num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 13px; margin-right: 4px; vertical-align: 1px; }
+  .pop-d { font-size: 12px; color: var(--muted); margin: 2px 0 0 !important; }
+  .pop-m { font-size: 13px; line-height: 1.6; margin: 8px 0 0 !important; white-space: pre-wrap; }
+  .pop .thumb { width: 52px; height: 52px; }
+  .pop-a { display: flex; gap: 12px; margin-top: 6px; }
+
+  /* ---------- modal ---------- */
+  #modalRoot { position: fixed; inset: 0; z-index: 2000; background: rgba(20,30,27,.52); display: flex; align-items: flex-end; justify-content: center; }
+  .modal { background: #fff; width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 18px 20px calc(22px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+  .modal.wide { max-width: 860px; }
+  @media (min-width: 768px) { #modalRoot { align-items: center; } .modal { border-radius: 16px; padding-bottom: 22px; } }
+  .mhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; }
+  .mhead h3 { font-size: 18px; font-weight: 700; }
+  .x { width: 36px; height: 36px; border-radius: 50%; font-size: 22px; line-height: 1; color: var(--muted); background: none; border: 0; flex: none; }
+  .x:hover { background: var(--mist); }
+  .edmedia { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .edm { position: relative; width: 76px; height: 76px; border-radius: 10px; overflow: hidden; background: var(--mist); }
+  .edm img, .edm video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .edm .rm { position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 50%; background: rgba(20,30,27,.75); color: #fff; font-size: 14px; line-height: 1; border: 0; }
+  .edm .tag { position: absolute; left: 3px; bottom: 3px; font-size: 10px; background: var(--route); color: #fff; border-radius: 4px; padding: 1px 4px; }
+  .edm .vd { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: rgba(20,30,27,.4); font-size: 18px; }
+  .stage { position: relative; background: #111A17; border-radius: 12px; overflow: hidden; display: grid; place-items: center; min-height: 240px; }
+  .stage img { max-width: 100%; max-height: 64vh; display: block; }
+  .stage iframe { width: 100%; aspect-ratio: 16/9; border: 0; display: block; }
+  .stage .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,.9); font-size: 26px; line-height: 1; border: 0; color: var(--ink); }
+  .stage .prev { left: 10px; } .stage .next { right: 10px; }
+  .stage .cnt { position: absolute; right: 10px; bottom: 8px; color: #fff; background: rgba(0,0,0,.45); border-radius: 6px; padding: 1px 8px; font-size: 15px; }
+  .vmemo { margin-top: 12px; line-height: 1.8; white-space: pre-wrap; font-size: 15px; }
+
+  /* ---------- toast ---------- */
+  #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); background: var(--ink); color: #fff;
+    padding: 11px 18px; border-radius: 12px; font-size: 14px; z-index: 3000; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: calc(100% - 32px); box-sizing: border-box; line-height: 1.5; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.err { background: #8E1F1A; }
+  @media (max-width: 767px) { #toast { bottom: auto; top: calc(var(--hdr) + env(safe-area-inset-top, 0px) + 10px); } }
+</style>
+</head>
+<body>
+
+<header id="appHeader">
+  <div class="brand">
+    <svg width="30" height="22" viewBox="0 0 30 22" aria-hidden="true">
+      <path d="M2 19 C 9 19, 9 4, 16 4 S 24 14, 28 3" fill="none" stroke="#D1206B" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M2 21 C 9 21, 9 8, 16 8 S 24 18, 28 7" fill="none" stroke="#9FB4AA" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2 3"/>
+    </svg>
+    <span>わだちログ</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <button id="btnNewTrip" class="btn btn-route btn-sm hidden" data-act="newTrip">＋ 新しいトリップ</button>
+    <div id="authArea"></div>
+  </div>
+</header>
+
+<main id="layout">
+  <aside id="panel" data-state="half" aria-label="トリップの情報">
+    <div id="panelHandle" data-act="sheet" role="button" tabindex="0" aria-label="パネルの高さを変える"><span></span></div>
+    <div id="panelBody"></div>
+  </aside>
+  <section id="mapWrap" aria-label="地図">
+    <div id="map"></div>
+    <div id="pickBanner" class="hidden" role="status"><span id="pickMsg"></span><button data-act="cancelPick">やめる</button></div>
+    <div id="playbar" class="hidden">
+      <button id="pbBtn" data-act="pbPlay" aria-label="再生">▶</button>
+      <input id="pbRange" type="range" min="0" max="1000" value="0" aria-label="再生位置">
+      <select id="pbSpeed" aria-label="再生速度">
+        <option value="90">ゆっくり</option>
+        <option value="45" selected>ふつう</option>
+        <option value="18">はやい</option>
+      </select>
+      <span id="pbInfo" class="num">0.0 km</span>
+      <button class="pb-x" data-act="togglePlay" aria-label="再生バーを閉じる">×</button>
+    </div>
+    <div id="dropOverlay" class="hidden">ここに離すと読み込みます<br><span class="text-sm font-normal">ルート：GPX・KML・GeoJSON ／ 写真・動画</span></div>
+  </section>
+</main>
+
+<div id="modalRoot" class="hidden"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="filePhotos" accept="image/*,video/*" multiple hidden>
+<input type="file" id="fileRoute" accept=".gpx,.kml,.geojson,.json,application/gpx+xml,application/vnd.google-earth.kml+xml,application/geo+json,application/json" hidden>
+
+<script>
+'use strict';
+/* ============================================================
+ * 設定：GASウェブアプリのURLを貼り付けてください
+ * ============================================================ */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
+const MAX_VIDEO_MB = 28;
+
+const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
+const TYPE_ICON = { cycling: '🚲', drive: '🚗', other: '🧭' };
+const ROUTE_EXT = /\.(gpx|kml|geojson|json)$/i;
+
+/* ---------- storage & state ---------- */
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+function safeJSON(s) { try { return JSON.parse(s); } catch (e) { return null; } }
+
+const S = {
+  token: ls.get('wadachi.token'),
+  user: safeJSON(ls.get('wadachi.user')),
+  trips: [], loading: false,
+  trip: null, spots: [],
+  route: null, stats: null,
+  tab: 'timeline', aiPhotos: true,
+  pick: null, editor: null, viewer: null, pendingRoute: null
+};
+
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const thumbUrl = (id, w = 400) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
+const previewUrl = id => `https://drive.google.com/file/d/${encodeURIComponent(id)}/preview`;
+const viewUrl = id => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
+const isVideo = m => /^video\//.test((m && m.mimeType) || '');
+const isMobile = () => window.innerWidth < 768;
+const pad2 = n => String(n).padStart(2, '0');
+
+let toastTimer;
+function toast(msg, kind = '') {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = 'show ' + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, kind === 'err' ? 5000 : 3200);
+}
+function fmtKm(km) { km = km || 0; return km < 100 ? km.toFixed(1) : String(Math.round(km)); }
+function fmtDur(sec) { if (!sec) return '--:--'; const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h + ':' + pad2(m); }
+function fmtDate(d) { if (!d) return ''; const p = d.split('-'); return p.length === 3 ? `${p[0]}年${+p[1]}月${+p[2]}日` : d; }
+function fmtTime(iso) { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function toLocalInput(iso) { const d = iso ? new Date(iso) : null; if (!d || isNaN(d)) return ''; return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function fromLocalInput(v) { if (!v) return ''; const d = new Date(v); return isNaN(d) ? '' : d.toISOString(); }
+function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function dateOf(ms) { const d = new Date(ms); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+
+/* ---------- API ---------- */
+function gasReady() { return GAS_URL && !GAS_URL.includes('PASTE_'); }
+async function api(action, data = {}) {
+  if (!gasReady()) throw new Error('GAS_URL が未設定です（index.html の冒頭で設定してください）');
+  let res;
+  try {
+    res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // プリフライトを発生させない
+      body: JSON.stringify({ action, token: S.token, ...data })
+    });
+  } catch (e) {
+    throw new Error('サーバーに接続できませんでした。通信状況を確認してください');
+  }
+  if (!res.ok) throw new Error('通信エラー（' + res.status + '）');
+  let j;
+  try { j = await res.json(); } catch (e) { throw new Error('サーバーの応答を読み取れませんでした。GASのデプロイ設定を確認してください'); }
+  if (!j.ok) {
+    if (j.error === 'AUTH' && action !== 'login') logout(true, j.message);
+    const e = new Error(j.message || 'エラーが発生しました');
+    e.code = j.error;
+    throw e;
+  }
+  return j;
+}
+
+/* ============================================================
+ * 地図
+ * ============================================================ */
+let map, routeLayer, spotLayer, hoverMarker;
+function initMap() {
+  const gsiPale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' });
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' });
+  const gsiPhoto = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+    maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル（写真）</a>' });
+
+  map = L.map('map', { zoomControl: false, layers: [osm] }).setView([35.681, 139.767], 11);
+  L.control.zoom({ position: 'topright', zoomInTitle: '拡大', zoomOutTitle: '縮小' }).addTo(map);
+  L.control.layers({ 'OpenStreetMap': osm, '地理院 淡色': gsiPale, '航空写真': gsiPhoto }, null, { position: 'topright' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+  spotLayer = L.layerGroup().addTo(map);
+
+  map.on('click', e => {
+    if (S.pick) { const cb = S.pick; endPick(); cb(e.latlng); }
+  });
+  // ポップアップ内のボタンは直接バインド（Leafletのイベント停止対策）
+  map.on('popupopen', e => {
+    $$('[data-act]', e.popup.getElement()).forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); runAct(b, ev); }));
+  });
+}
+
+/* ---------- route parsing ---------- */
+function byTag(el, name) { return Array.from(el.getElementsByTagNameNS('*', name)); }
+function parseRouteText(text, nameHint = '') {
+  const t = String(text || '').replace(/^\uFEFF/, '').trim();
+  if (!t) throw new Error('内容が空です');
+  if (t[0] === '{' || t[0] === '[') {
+    let obj;
+    try { obj = JSON.parse(t); } catch (e) { throw new Error('JSONとして読み取れませんでした'); }
+    if (obj && obj.wadachi && Array.isArray(obj.points)) return { name: obj.name || nameHint, points: obj.points };
+    return parseGeoJSON(obj, nameHint);
+  }
+  const xml = new DOMParser().parseFromString(t, 'application/xml');
+  if (xml.getElementsByTagName('parsererror').length) throw new Error('ファイルを読み取れませんでした（GPX・KML・GeoJSON に対応）');
+  const root = xml.documentElement.localName.toLowerCase();
+  if (root === 'gpx') return parseGPX(xml, nameHint);
+  if (root === 'kml' || byTag(xml, 'Placemark').length) return parseKML(xml, nameHint);
+  throw new Error('対応していない形式です（GPX・KML・GeoJSON に対応）');
+}
+function parseGPX(xml, hint) {
+  let nodes = byTag(xml, 'trkpt');
+  if (!nodes.length) nodes = byTag(xml, 'rtept');
+  if (!nodes.length) nodes = byTag(xml, 'wpt');
+  const points = nodes.map(p => {
+    const ele = byTag(p, 'ele')[0], time = byTag(p, 'time')[0];
+    return [parseFloat(p.getAttribute('lat')), parseFloat(p.getAttribute('lon')),
+      ele ? parseFloat(ele.textContent) : null, time ? (Date.parse(time.textContent) || null) : null];
+  });
+  const trk = byTag(xml, 'trk')[0] || byTag(xml, 'rte')[0];
+  const nm = (trk && byTag(trk, 'name')[0]) || byTag(xml, 'name')[0];
+  return { name: (nm && nm.textContent.trim()) || hint, points };
+}
+function parseKML(xml, hint) {
+  const points = [];
+  const tracks = byTag(xml, 'Track');
+  if (tracks.length) {
+    tracks.forEach(tr => {
+      const whens = byTag(tr, 'when'), coords = byTag(tr, 'coord');
+      coords.forEach((c, i) => {
+        const [lng, lat, ele] = c.textContent.trim().split(/\s+/).map(Number);
+        points.push([lat, lng, isFinite(ele) ? ele : null, whens[i] ? (Date.parse(whens[i].textContent) || null) : null]);
+      });
+    });
+  } else {
+    byTag(xml, 'LineString').forEach(ls => {
+      const co = byTag(ls, 'coordinates')[0];
+      if (!co) return;
+      co.textContent.trim().split(/\s+/).forEach(s => {
+        const [lng, lat, ele] = s.split(',').map(Number);
+        if (isFinite(lat) && isFinite(lng)) points.push([lat, lng, isFinite(ele) ? ele : null, null]);
+      });
+    });
+  }
+  const doc = byTag(xml, 'Document')[0] || xml.documentElement;
+  const nm = byTag(doc, 'name')[0];
+  return { name: (nm && nm.textContent.trim()) || hint, points };
+}
+function parseGeoJSON(obj, hint) {
+  const points = [];
+  let name = '';
+  const addLine = (coords, times) => (coords || []).forEach((c, i) => {
+    points.push([c[1], c[0], c.length > 2 && isFinite(c[2]) ? c[2] : null, times && times[i] ? (Date.parse(times[i]) || null) : null]);
+  });
+  const walk = (g, props) => {
+    if (!g || typeof g !== 'object') return;
+    switch (g.type) {
+      case 'FeatureCollection': (g.features || []).forEach(f => walk(f)); break;
+      case 'Feature':
+        if (!name && g.properties && g.properties.name) name = String(g.properties.name);
+        walk(g.geometry, g.properties || {}); break;
+      case 'LineString': addLine(g.coordinates, props && (props.coordTimes || (props.coordinateProperties && props.coordinateProperties.times))); break;
+      case 'MultiLineString': g.coordinates.forEach((l, i) => {
+        const ct = props && props.coordTimes;
+        addLine(l, Array.isArray(ct) && Array.isArray(ct[i]) ? ct[i] : null);
+      }); break;
+      case 'GeometryCollection': (g.geometries || []).forEach(x => walk(x, props)); break;
+    }
+  };
+  walk(obj);
+  return { name: name || hint, points };
+}
+function normalizeRoute(r) {
+  let pts = (r.points || []).map(p => [+p[0], +p[1],
+    p[2] == null || !isFinite(+p[2]) ? null : +p[2],
+    p[3] == null || !isFinite(+p[3]) ? null : +p[3]])
+    .filter(p => isFinite(p[0]) && isFinite(p[1]) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180);
+  pts = pts.filter((p, i) => i === 0 || p[0] !== pts[i - 1][0] || p[1] !== pts[i - 1][1]);
+  if (pts.length < 2) throw new Error('ルートとして読み取れる点が見つかりませんでした');
+  const MAX = 8000;
+  if (pts.length > MAX) {
+    const step = pts.length / MAX, out = [];
+    for (let i = 0; i < MAX - 1; i++) out.push(pts[Math.floor(i * step)]);
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  pts = pts.map(p => [Math.round(p[0] * 1e6) / 1e6, Math.round(p[1] * 1e6) / 1e6, p[2] == null ? null : Math.round(p[2] * 10) / 10, p[3]]);
+  return { name: String(r.name || '').trim(), points: pts };
+}
+function hav(a, b) {
+  const R = 6371000, k = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * k, dLng = (b[1] - a[1]) * k;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * k) * Math.cos(b[0] * k) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+function computeStats(pts) {
+  const cum = [0];
+  let dist = 0;
+  for (let i = 1; i < pts.length; i++) { dist += hav(pts[i - 1], pts[i]); cum.push(dist); }
+  let gain = 0, ref = null, maxEle = -Infinity, minEle = Infinity, hasEle = false;
+  pts.forEach(p => {
+    const e = p[2];
+    if (e == null) return;
+    hasEle = true;
+    if (e > maxEle) maxEle = e;
+    if (e < minEle) minEle = e;
+    if (ref === null) ref = e;
+    else if (e - ref >= 3) { gain += e - ref; ref = e; }  // 3mのヒステリシスでGPSノイズを除く
+    else if (ref - e >= 3) ref = e;
+  });
+  const times = pts.map(p => p[3]).filter(t => t != null);
+  const startTime = times.length ? Math.min(...times) : null;
+  const endTime = times.length ? Math.max(...times) : null;
+  return {
+    distanceKm: dist / 1000, elevationGainM: Math.round(gain),
+    durationSec: startTime != null && endTime > startTime ? Math.round((endTime - startTime) / 1000) : 0,
+    cum, hasEle, maxEle: hasEle ? maxEle : 0, minEle: hasEle ? minEle : 0, startTime, endTime
+  };
+}
+
+/* ---------- drawing ---------- */
+function setRoute(r) {
+  pbReset();
+  S.route = r;
+  S.stats = r ? computeStats(r.points) : null;
+  routeLayer.clearLayers();
+  if (!r) return;
+  const ll = r.points.map(p => [p[0], p[1]]);
+  L.polyline(ll, { color: '#fff', weight: 9, opacity: .95, interactive: false }).addTo(routeLayer);
+  L.polyline(ll, { color: '#D1206B', weight: 4.5, opacity: 1, interactive: false }).addTo(routeLayer);
+  L.circleMarker(ll[0], { radius: 7, color: '#fff', weight: 3, fillColor: '#2F5B4B', fillOpacity: 1 }).bindTooltip('スタート').addTo(routeLayer);
+  L.circleMarker(ll[ll.length - 1], { radius: 7, color: '#fff', weight: 3, fillColor: '#1F2E29', fillOpacity: 1 }).bindTooltip('ゴール').addTo(routeLayer);
+}
+function sortedSpots() {
+  const t = s => s.takenAt ? Date.parse(s.takenAt) : Infinity;
+  return [...S.spots].sort((a, b) => (t(a) - t(b)) || String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+function drawSpots() {
+  spotLayer.clearLayers();
+  sortedSpots().forEach((s, i) => {
+    const img = (s.media || []).find(m => !isVideo(m));
+    const icon = img
+      ? L.divIcon({ className: '', html: `<div class="pin-photo" style="background-image:url('${esc(thumbUrl(img.fileId, 120))}')"><b>${i + 1}</b></div>`, iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -24] })
+      : L.divIcon({ className: '', html: `<div class="pin-num"><span>${i + 1}</span></div>`, iconSize: [28, 28], iconAnchor: [14, 32], popupAnchor: [0, -30] });
+    const mk = L.marker([s.lat, s.lng], { icon, title: s.title || `スポット ${i + 1}`, riseOnHover: true }).addTo(spotLayer);
+    mk.bindPopup(() => popupHtml(s, i), { maxWidth: 280, minWidth: 200 });
+    mk._spotId = s.spotId;
+  });
+}
+function popupHtml(s, i) {
+  const m = s.media || [];
+  return `<div class="pop"><p class="pop-t"><span class="num">${i + 1}</span>${esc(s.title || '名称未設定のスポット')}</p>
+    ${s.takenAt ? `<p class="pop-d num">${esc(fmtTime(s.takenAt))}</p>` : ''}
+    ${m.length ? `<div class="thumbs">${m.slice(0, 4).map((x, j) => thumbBtn(s, x, j)).join('')}</div>` : ''}
+    ${s.memo ? `<p class="pop-m">${esc(s.memo.length > 90 ? s.memo.slice(0, 90) + '…' : s.memo)}</p>` : ''}
+    <div class="pop-a"><button class="lnk" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="0">開く</button>${S.trip ? `<button class="lnk" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}</div></div>`;
+}
+function fitAll() {
+  const b = L.latLngBounds([]);
+  if (S.route) S.route.points.forEach(p => b.extend([p[0], p[1]]));
+  S.spots.forEach(s => b.extend([s.lat, s.lng]));
+  if (!b.isValid()) return;
+  const bottom = isMobile() ? Math.round(window.innerHeight * 0.45) : 30;
+  map.fitBounds(b, { paddingTopLeft: [30, 40], paddingBottomRight: [30, bottom], maxZoom: 16 });
+}
+
+/* ---------- elevation profile ---------- */
+function idxAtDist(target) {
+  const c = S.stats.cum;
+  let lo = 0, hi = c.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (c[mid] < target) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+function posAtFrac(f) {
+  const c = S.stats.cum, pts = S.route.points, tot = c[c.length - 1];
+  const target = f * tot;
+  const i = Math.max(1, idxAtDist(target));
+  const a = pts[i - 1], b = pts[i];
+  const seg = (c[i] - c[i - 1]) || 1;
+  const r = Math.min(1, Math.max(0, (target - c[i - 1]) / seg));
+  const t = (a[3] != null && b[3] != null) ? a[3] + (b[3] - a[3]) * r : null;
+  const e = (a[2] != null && b[2] != null) ? a[2] + (b[2] - a[2]) * r : null;
+  return { lat: a[0] + (b[0] - a[0]) * r, lng: a[1] + (b[1] - a[1]) * r, dist: target, time: t, ele: e };
+}
+function profileHtml() {
+  const st = S.stats;
+  if (!st || !st.hasEle) return '';
+  const pts = S.route.points, n = pts.length, N = Math.min(320, n), tot = st.cum[n - 1] || 1, rng = (st.maxEle - st.minEle) || 1;
+  let d = '';
+  for (let k = 0; k < N; k++) {
+    const i = Math.round(k * (n - 1) / (N - 1));
+    const e = pts[i][2];
+    if (e == null) continue;
+    const x = st.cum[i] / tot * 1000, y = 152 - (e - st.minEle) / rng * 136;
+    d += (d ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+  }
+  return `<div class="profile">
+    <div class="profile-h"><span>標高</span><span id="profInfo" class="num">${Math.round(st.minEle)}〜${Math.round(st.maxEle)} m</span></div>
+    <svg id="profileSvg" viewBox="0 0 1000 160" preserveAspectRatio="none" role="img" aria-label="標高グラフ">
+      <path d="${d} L1000 160 L0 160 Z" class="pa"/><path d="${d}" class="pl" vector-effect="non-scaling-stroke"/>
+      <line id="profCursor" x1="0" x2="0" y1="0" y2="160" class="pc" vector-effect="non-scaling-stroke" style="display:none"/>
+    </svg></div>`;
+}
+function bindProfile() {
+  const svg = $('#profileSvg');
+  if (!svg) return;
+  const move = e => {
+    const r = svg.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const p = posAtFrac(f);
+    const line = $('#profCursor');
+    line.setAttribute('x1', f * 1000); line.setAttribute('x2', f * 1000); line.style.display = '';
+    if (!hoverMarker) hoverMarker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="hover-dot"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }), interactive: false, zIndexOffset: 900 });
+    hoverMarker.setLatLng([p.lat, p.lng]).addTo(map);
+    $('#profInfo').textContent = `${(p.dist / 1000).toFixed(1)} km 地点 ${p.ele != null ? Math.round(p.ele) + ' m' : ''}`;
+  };
+  const leave = () => {
+    const line = $('#profCursor'); if (line) line.style.display = 'none';
+    if (hoverMarker) hoverMarker.remove();
+    const info = $('#profInfo'); if (info && S.stats) info.textContent = `${Math.round(S.stats.minEle)}〜${Math.round(S.stats.maxEle)} m`;
+  };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', leave);
+}
+
+/* ---------- playback ---------- */
+const PB = { on: false, playing: false, frac: 0, last: 0, raf: 0, marker: null };
+function showPlaybar(show) {
+  if (show && !S.route) { toast('先にルートを読み込んでください'); return; }
+  PB.on = show;
+  $('#playbar').classList.toggle('hidden', !show);
+  if (show) {
+    if (!PB.marker) PB.marker = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="pb-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 1000 });
+    PB.marker.addTo(map);
+    pbSet(PB.frac);
+  } else {
+    pbPause();
+    if (PB.marker) PB.marker.remove();
+  }
+}
+function pbSet(f) {
+  PB.frac = Math.max(0, Math.min(1, f));
+  const p = posAtFrac(PB.frac);
+  PB.marker.setLatLng([p.lat, p.lng]);
+  $('#pbRange').value = Math.round(PB.frac * 1000);
+  let info = (p.dist / 1000).toFixed(1) + ' km';
+  if (p.time) { const d = new Date(p.time); info += ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  $('#pbInfo').textContent = info;
+}
+function pbTick(ts) {
+  if (!PB.playing) return;
+  const dt = PB.last ? (ts - PB.last) / 1000 : 0;
+  PB.last = ts;
+  const f = PB.frac + dt / Number($('#pbSpeed').value);
+  if (f >= 1) { pbSet(1); pbPause(); return; }
+  pbSet(f);
+  if (!map.getBounds().pad(-0.15).contains(PB.marker.getLatLng())) map.panTo(PB.marker.getLatLng(), { animate: true });
+  PB.raf = requestAnimationFrame(pbTick);
+}
+function pbPlay() {
+  if (PB.playing) { pbPause(); return; }
+  if (PB.frac >= 1) PB.frac = 0;
+  PB.playing = true; PB.last = 0;
+  const b = $('#pbBtn'); b.textContent = '❚❚'; b.setAttribute('aria-label', '一時停止');
+  PB.raf = requestAnimationFrame(pbTick);
+}
+function pbPause() {
+  PB.playing = false;
+  cancelAnimationFrame(PB.raf);
+  const b = $('#pbBtn'); b.textContent = '▶'; b.setAttribute('aria-label', '再生');
+}
+function pbReset() { PB.frac = 0; if (PB.on) showPlaybar(false); }
+
+/* ---------- pick on map ---------- */
+function startPick(msg, cb) {
+  S.pick = cb;
+  $('#pickMsg').textContent = msg;
+  $('#pickBanner').classList.remove('hidden');
+  $('#map').classList.add('picking');
+  setSheet('peek');
+}
+function endPick() {
+  S.pick = null;
+  $('#pickBanner').classList.add('hidden');
+  $('#map').classList.remove('picking');
+}
+
+/* ---------- bottom sheet (mobile) ---------- */
+const SHEET_LEVELS = ['peek', 'half', 'full'];
+function setSheet(st) {
+  if (!isMobile()) return;
+  $('#panel').dataset.state = st;
+  setTimeout(() => map && map.invalidateSize(), 280);
+}
+function bindSheet() {
+  const h = $('#panelHandle');
+  let y0 = null;
+  h.addEventListener('pointerdown', e => { y0 = e.clientY; h.setPointerCapture(e.pointerId); });
+  h.addEventListener('pointerup', e => {
+    if (y0 === null) return;
+    const dy = e.clientY - y0; y0 = null;
+    const cur = SHEET_LEVELS.indexOf($('#panel').dataset.state);
+    let next;
+    if (dy < -30) next = Math.min(2, cur + 1);
+    else if (dy > 30) next = Math.max(0, cur - 1);
+    else next = (cur + 1) % 3;
+    setSheet(SHEET_LEVELS[next]);
+  });
+  h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const cur = SHEET_LEVELS.indexOf($('#panel').dataset.state); setSheet(SHEET_LEVELS[(cur + 1) % 3]); } });
+}
+
+/* ============================================================
+ * 描画：ヘッダー・パネル
+ * ============================================================ */
+function renderAll() { renderHeader(); renderPanel(); }
+
+function renderHeader() {
+  $('#btnNewTrip').classList.toggle('hidden', !S.user);
+  const a = $('#authArea');
+  if (S.user) {
+    a.innerHTML = `<div class="relative" id="acctWrap">
+      <button class="acct" data-act="menu" aria-haspopup="true" aria-expanded="false">
+        <span class="av">${esc((S.user.displayName || '?').slice(0, 1))}</span><span class="acct-name">${esc(S.user.displayName)}</span></button>
+      <div id="acctMenu" class="menu hidden" role="menu">
+        <p class="menu-email">${esc(S.user.email)}</p>
+        <button role="menuitem" data-act="editName">表示名を変更</button>
+        <button role="menuitem" data-act="changePw">パスワードを変更</button>
+        <button role="menuitem" data-act="logout">ログアウト</button>
+      </div></div>`;
+  } else {
+    a.innerHTML = `<button class="btn btn-light btn-sm" data-act="login">ログイン</button>`;
+  }
+}
+
+function renderPanel() {
+  pbPauseIfHidden();
+  const body = $('#panelBody');
+  if (!S.user) body.innerHTML = welcomeHtml();
+  else if (S.trip) body.innerHTML = tripHtml();
+  else body.innerHTML = listHtml();
+  bindProfile();
+}
+function pbPauseIfHidden() { if (!S.route && PB.on) showPlaybar(false); }
+
+function meterHtml() {
+  const st = S.stats;
+  const cell = (v, u, l) => `<div><span class="mv">${v}<small>${u}</small></span><span class="ml">${l}</span></div>`;
+  return `<div class="meter ${st ? '' : 'empty-route'}">
+    ${cell(st ? fmtKm(st.distanceKm) : '0.0', 'km', '距離')}
+    ${cell(st && st.hasEle ? st.elevationGainM : '—', st && st.hasEle ? 'm' : '', '獲得標高')}
+    ${cell(st ? fmtDur(st.durationSec) : '--:--', '', '所要時間')}
+    ${cell(S.trip ? S.spots.length : '—', S.trip ? 'か所' : '', '立ち寄り')}
+  </div>`;
+}
+
+function welcomeHtml() {
+  return `<h1 class="wtitle">走った道に、<br>寄り道を綴じる。</h1>
+    <p class="wlead">サイクリングやドライブのGPSログを地図に引き、立ち寄った場所の写真・動画・メモをピンで残せます。振り返りの文章はAIが下書きします。</p>
+    <div class="flex gap-2 mt-5"><button class="btn btn-route" data-act="register">新規登録</button><button class="btn btn-ghost" data-act="login">ログイン</button></div>
+    <div class="try">
+      <p class="font-bold">登録せずに試す</p>
+      <p class="text-sm muted">GPX・KML・GeoJSON を地図に落とすと、その場でルートと距離・標高を表示します。この表示は保存されません。</p>
+      <button class="btn btn-ghost btn-sm mt-3" data-act="pickRoute">ルートファイルを選ぶ</button>
+      ${S.route ? meterHtml() + profileHtml() + `<div class="subacts"><button class="lnk" data-act="togglePlay">ルートを再生</button></div>` : ''}
+    </div>
+    ${gasReady() ? '' : '<p class="note">管理者の方へ：index.html の GAS_URL がまだ設定されていません。</p>'}`;
+}
+
+function listHtml() {
+  let content;
+  if (S.loading && !S.trips.length) content = '<p class="muted">読み込み中…</p>';
+  else if (!S.trips.length) content = `<div class="empty"><p class="font-bold">まだトリップがありません</p>
+      <p class="text-sm mt-1">走行ログ（GPX・KML・GeoJSON）を読み込むところから始めましょう。ログがなくても、写真やピンだけで記録できます。</p>
+      <button class="btn btn-route btn-sm mt-3" data-act="newTrip">＋ 新しいトリップ</button></div>`;
+  else content = `<div class="trips">${S.trips.map(t => `
+      <button class="trip" data-act="openTrip" data-id="${esc(t.tripId)}">
+        <span class="ti" aria-hidden="true">${TYPE_ICON[t.tripType] || '🧭'}</span>
+        <span class="tb"><span class="tt">${esc(t.title)}</span><span class="tm">${esc(fmtDate(t.startDate)) || '日付なし'}</span></span>
+        <span class="tn">${t.hasRoute ? `<b class="num">${fmtKm(t.distanceKm)}</b><small>km</small>` : '<small>ルートなし</small>'}<small>${t.spotCount}か所</small></span>
+      </button>`).join('')}</div>`;
+  return `<div class="flex items-center justify-between mb-4"><h2 class="h2">トリップ</h2>
+    <button class="btn btn-ghost btn-sm md:hidden" data-act="newTrip">＋ 新規</button></div>${content}`;
+}
+
+function tripHtml() {
+  const t = S.trip;
+  const dates = t.startDate ? fmtDate(t.startDate) + (t.endDate && t.endDate !== t.startDate ? ' 〜 ' + fmtDate(t.endDate) : '') : '日付なし';
+  return `<button class="back" data-act="backList">‹ トリップ一覧</button>
+    <h2 class="ttl">${esc(t.title)}</h2>
+    <div class="meta"><span>${TYPE_ICON[t.tripType] || ''} ${TYPE_LABEL[t.tripType] || ''}</span><span>${esc(dates)}</span>${t.routeName ? `<span>${esc(t.routeName)}</span>` : ''}</div>
+    ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ''}
+    ${meterHtml()}
+    ${profileHtml()}
+    <div class="acts">
+      <button class="btn btn-ghost" data-act="importRoute"><span aria-hidden="true">〰</span><span>${S.route ? 'ルートを置き換え' : 'ルートを読み込む'}</span></button>
+      <button class="btn btn-ghost" data-act="addMedia"><span aria-hidden="true">📷</span><span>写真・動画を追加</span></button>
+      <button class="btn btn-ghost" data-act="pinMode"><span aria-hidden="true">📍</span><span>ピンを打つ</span></button>
+    </div>
+    <div class="subacts">
+      ${S.route ? `<button class="lnk" data-act="togglePlay">ルートを再生</button><button class="lnk" data-act="exportGpx">GPXで書き出す</button><button class="lnk" data-act="copyShare">共有コードをコピー</button>` : ''}
+      <button class="lnk" data-act="editTrip">トリップを編集</button>
+      <button class="lnk danger" data-act="deleteTrip">削除</button>
+    </div>
+    <div class="tabs mt-5" role="tablist">
+      <button class="tab ${S.tab === 'timeline' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'timeline'}" data-act="tab" data-tab="timeline">タイムライン</button>
+      <button class="tab ${S.tab === 'ai' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'ai'}" data-act="tab" data-tab="ai">AIでまとめる</button>
+    </div>
+    ${S.tab === 'ai' ? aiHtml() : timelineHtml()}`;
+}
+
+function thumbBtn(s, m, j) {
+  return `<button class="thumb" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="${j}" aria-label="${isVideo(m) ? '動画' : '写真'}を開く">
+    <img src="${esc(thumbUrl(m.fileId, 240))}" alt="" loading="lazy" onerror="this.remove()">${isVideo(m) ? '<span class="vid">▶</span>' : ''}</button>`;
+}
+function timelineHtml() {
+  const sp = sortedSpots();
+  if (!sp.length) return `<div class="empty"><p class="font-bold">まだスポットがありません</p>
+    <p class="text-sm mt-1">「写真・動画を追加」を使うと、撮影地点に自動でピンが立ちます。位置情報のない写真や、メモだけ残したい場所は「ピンを打つ」から追加できます。</p></div>`;
+  return `<ol class="tl">${sp.map((s, i) => {
+    const media = s.media || [];
+    return `<li class="tl-item"><span class="tl-no">${i + 1}</span><div class="tl-body">
+      <button class="tl-head" data-act="focusSpot" data-id="${esc(s.spotId)}"><span class="tl-title">${esc(s.title || '名称未設定のスポット')}</span><span class="tl-time">${esc(fmtTime(s.takenAt))}</span></button>
+      ${s.memo ? `<p class="tl-memo">${esc(s.memo)}</p>` : ''}
+      ${media.length ? `<div class="thumbs">${media.slice(0, 6).map((m, j) => thumbBtn(s, m, j)).join('')}${media.length > 6 ? `<button class="thumb" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="6">+${media.length - 6}</button>` : ''}</div>` : ''}
+      <div class="tl-actions"><button class="lnk" data-act="focusSpot" data-id="${esc(s.spotId)}">地図で見る</button><button class="lnk" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button></div>
+    </div></li>`;
+  }).join('')}</ol>`;
+}
+function aiHtml() {
+  const t = S.trip;
+  const blocks = [
+    ['summary', 'aiSummary', '日誌の要約', '道のりと立ち寄り先を時系列でまとめた日誌'],
+    ['highlights', 'aiHighlights', 'ルートの見どころ', 'ルートの特徴とスポットごとの解説、走る人へのアドバイス'],
+    ['sns', 'aiSns', 'SNS・ブログ用の投稿文', '140字前後の投稿文とハッシュタグ、ブログの導入文']
+  ];
+  return `<label class="chk"><input type="checkbox" id="aiPhotos" ${S.aiPhotos ? 'checked' : ''}> 写真に写っているものも読み取る（最大6枚）</label>
+    ${!S.spots.length && !t.hasRoute ? '<p class="note" style="margin:0 0 12px">ルートやスポットを登録すると、その内容に沿った文章になります。</p>' : ''}
+    ${blocks.map(([mode, f, title, desc]) => `<section class="ai">
+      <div class="ai-h"><div><h4>${title}</h4><p>${desc}</p></div>
+        <button class="btn btn-ink btn-sm" data-act="aiGen" data-mode="${mode}">${t[f] ? '作り直す' : '生成する'}</button></div>
+      ${t[f] ? `<textarea id="ai_${mode}" class="inp ai-out" rows="8">${esc(t[f])}</textarea>
+        <div class="text-right"><button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div>` : ''}
+    </section>`).join('')}
+    <p class="hint">生成された文章は自由に書き直してからコピーできます。事実と違う点がないか確認してから使ってください。</p>`;
+}
+
+/* ============================================================
+ * モーダル
+ * ============================================================ */
+let modalLocked = false;
+const X_BTN = '<button class="x" data-act="closeModal" aria-label="閉じる">×</button>';
+function openModal(html, opt = {}) {
+  modalLocked = !!opt.locked;
+  const root = $('#modalRoot');
+  root.innerHTML = `<div class="modal ${opt.wide ? 'wide' : ''}" role="dialog" aria-modal="true">${html}</div>`;
+  root.classList.remove('hidden');
+  const f = root.querySelector('input:not([type=hidden]):not([type=file]), textarea, button');
+  if (f && !isMobile()) setTimeout(() => f.focus(), 30);
+}
+function closeModal(force) {
+  if (modalLocked && !force) return;
+  modalLocked = false;
+  const root = $('#modalRoot');
+  $$('[data-objurl]', root).forEach(el => URL.revokeObjectURL(el.dataset.objurl));
+  root.classList.add('hidden');
+  root.innerHTML = '';
+  S.viewer = null;
+}
+function bindForm(form, fn) {
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = form.querySelector('[type=submit]');
+    const err = form.querySelector('.ferr');
+    if (err) err.textContent = '';
+    const orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '処理中…'; }
+    try { await fn(Object.fromEntries(new FormData(form)), form); }
+    catch (x) { if (err) err.textContent = x.message; else toast(x.message, 'err'); }
+    finally { if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = orig; } }
+  });
+}
+const EYE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.9 17.9A10.1 10.1 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 4.2A9.6 9.6 0 0 1 12 4c7 0 11 8 11 8a18.6 18.6 0 0 1-2.2 3.2M1 1l22 22"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/></svg>';
+function pwField(name, label, ac, hint = '') {
+  return `<div class="field"><label for="f_${name}">${label}</label><div class="pw">
+    <input class="inp" id="f_${name}" type="password" name="${name}" autocomplete="${ac}" required>
+    <button type="button" class="eye" data-act="eye" aria-label="パスワードを表示">${EYE}</button></div>
+    ${hint ? `<p class="hint">${hint}</p>` : ''}</div>`;
+}
+const PW_HINT = '8文字以上で、英字と数字を両方含めてください';
+
+/* ---------- auth ---------- */
+function openAuth(tab = 'login') {
+  openModal(`<div class="mhead"><h3>アカウント</h3>${X_BTN}</div>
+    <div class="tabs" role="tablist">
+      <button class="tab" data-act="authTab" data-tab="login">ログイン</button>
+      <button class="tab" data-act="authTab" data-tab="register">新規登録</button>
+      <button class="tab" data-act="authTab" data-tab="forgot">パスワードを忘れた</button>
+    </div><div id="authBody"></div>`);
+  renderAuthBody(tab);
+}
+function renderAuthBody(tab) {
+  $$('#modalRoot [data-act=authTab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const el = $('#authBody');
+  if (tab === 'login') {
+    el.innerHTML = `<form id="fLogin" novalidate>
+      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
+      ${pwField('password', 'パスワード', 'current-password')}
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">ログイン</button></form>`;
+    bindForm($('#fLogin'), async d => {
+      const r = await api('login', { email: d.email, password: d.password });
+      afterLogin(r, 'おかえりなさい、' + r.user.displayName + ' さん');
+    });
+  } else if (tab === 'register') {
+    el.innerHTML = `<form id="fReg" novalidate>
+      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
+      <div class="field"><label for="f_name">表示名</label><input class="inp" id="f_name" name="displayName" maxlength="30" autocomplete="nickname" required><p class="hint">30文字まで。あとから変更できます</p></div>
+      ${pwField('password', 'パスワード', 'new-password', PW_HINT)}
+      ${pwField('password2', 'パスワード（確認）', 'new-password')}
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">登録する</button></form>`;
+    bindForm($('#fReg'), async d => {
+      if (d.password !== d.password2) throw new Error('確認用のパスワードが一致しません');
+      const r = await api('register', { email: d.email, displayName: d.displayName, password: d.password });
+      afterLogin(r, '登録しました。最初のトリップを作りましょう');
+    });
+  } else {
+    el.innerHTML = `<form id="fForgot" novalidate>
+      <p class="text-sm mb-4" style="line-height:1.7">登録したメールアドレスに仮パスワードを送ります。仮パスワードでログインしたあと、新しいパスワードを設定してください。</p>
+      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">仮パスワードを送る</button></form>`;
+    bindForm($('#fForgot'), async d => {
+      const r = await api('forgotPassword', { email: d.email });
+      $('#authBody').innerHTML = `<p style="line-height:1.8">${esc(r.message)}</p><p class="hint mt-2">届かない場合は迷惑メールフォルダも確認してください。</p>
+        <button class="btn btn-route w-full mt-4" data-act="authTab" data-tab="login">ログインへ</button>`;
+    });
+  }
+}
+function setSession(token, user) {
+  if (token) { S.token = token; ls.set('wadachi.token', token); }
+  S.user = user; ls.set('wadachi.user', JSON.stringify(user));
+}
+function afterLogin(r, msg) {
+  setSession(r.token, r.user);
+  closeModal(true);
+  setRoute(null);
+  renderAll();
+  loadTrips();
+  if (r.user.mustChangePassword) openChangePw(true);
+  else toast(msg);
+}
+function logout(expired, msg) {
+  S.token = null; S.user = null; S.trips = []; S.trip = null; S.spots = [];
+  ls.del('wadachi.token'); ls.del('wadachi.user');
+  endPick();
+  setRoute(null); drawSpots();
+  history.replaceState(null, '', location.pathname);
+  closeModal(true);
+  renderAll();
+  if (expired) { toast(msg || 'もう一度ログインしてください', 'err'); openAuth('login'); }
+  else toast('ログアウトしました');
+}
+function openChangePw(forced) {
+  openModal(`<div class="mhead"><h3>${forced ? '新しいパスワードを設定' : 'パスワードを変更'}</h3>${forced ? '' : X_BTN}</div>
+    ${forced ? '<p class="text-sm mb-4" style="line-height:1.7">仮パスワードでログインしました。続けて使うには、新しいパスワードを設定してください。</p>' : ''}
+    <form id="fPw" novalidate>
+      ${pwField('currentPassword', forced ? 'メールで届いた仮パスワード' : '現在のパスワード', 'current-password')}
+      ${pwField('newPassword', '新しいパスワード', 'new-password', PW_HINT)}
+      ${pwField('newPassword2', '新しいパスワード（確認）', 'new-password')}
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">パスワードを変更</button>
+      ${forced ? '<div class="text-center mt-3"><button type="button" class="lnk" data-act="logout">ログアウト</button></div>' : ''}
+    </form>`, { locked: forced });
+  bindForm($('#fPw'), async d => {
+    if (d.newPassword !== d.newPassword2) throw new Error('確認用のパスワードが一致しません');
+    const r = await api('changePassword', { currentPassword: d.currentPassword, newPassword: d.newPassword });
+    setSession(r.token, r.user);
+    closeModal(true);
+    renderHeader();
+    toast('パスワードを変更しました');
+  });
+}
+function openEditName() {
+  openModal(`<div class="mhead"><h3>表示名を変更</h3>${X_BTN}</div>
+    <form id="fName" novalidate><div class="field"><label for="f_name">表示名</label>
+    <input class="inp" id="f_name" name="displayName" maxlength="30" required value="${esc(S.user.displayName)}"></div>
+    <p class="ferr"></p><button type="submit" class="btn btn-route w-full">保存する</button></form>`);
+  bindForm($('#fName'), async d => {
+    const r = await api('updateProfile', { displayName: d.displayName });
+    setSession(null, r.user); closeModal(); renderHeader(); toast('表示名を変更しました');
+  });
+}
+
+/* ---------- trips ---------- */
+async function loadTrips() {
+  S.loading = true; renderPanel();
+  try { const r = await api('listTrips'); S.trips = r.trips; }
+  catch (e) { if (e.code !== 'AUTH') toast(e.message, 'err'); }
+  finally { S.loading = false; if (!S.trip) renderPanel(); }
+}
+async function openTrip(id) {
+  endPick();
+  $('#panelBody').innerHTML = '<p class="muted">トリップを開いています…</p>';
+  try {
+    const r = await api('getTrip', { tripId: id });
+    S.trip = r.trip; S.spots = r.spots || []; S.tab = 'timeline';
+    setRoute(r.route && r.route.points && r.route.points.length > 1 ? normalizeRoute(r.route) : null);
+    drawSpots(); fitAll(); renderPanel(); setSheet('half');
+    history.replaceState(null, '', '?trip=' + encodeURIComponent(id));
+  } catch (e) {
+    toast(e.message, 'err');
+    if (S.user) { S.trip = null; renderPanel(); }
+  }
+}
+function closeTrip() {
+  endPick();
+  S.trip = null; S.spots = [];
+  setRoute(null); drawSpots(); renderPanel();
+  history.replaceState(null, '', location.pathname);
+}
+function syncTripInList(t) {
+  const i = S.trips.findIndex(x => x.tripId === t.tripId);
+  if (i >= 0) S.trips[i] = { ...S.trips[i], ...t }; else S.trips.unshift(t);
+}
+function openTripForm(trip, pendingRoute) {
+  const t = trip || {};
+  const isNew = !t.tripId;
+  S.pendingRoute = pendingRoute || null;
+  const pr = S.pendingRoute;
+  const defStart = t.startDate || (pr && pr.points[0] && pr.points[0][3] ? dateOf(pr.points[0][3]) : (isNew ? todayStr() : ''));
+  const type = t.tripType || 'cycling';
+  openModal(`<div class="mhead"><h3>${isNew ? '新しいトリップ' : 'トリップを編集'}</h3>${X_BTN}</div>
+    <form id="fTrip" novalidate>
+      <div class="field"><label for="f_title">タイトル</label><input class="inp" id="f_title" name="title" maxlength="80" required placeholder="例：しまなみ海道 はじめての完走" value="${esc(t.title || (pr && pr.name) || '')}"></div>
+      <div class="field"><span class="lbl">種類</span><div class="seg">
+        ${Object.keys(TYPE_LABEL).map(k => `<label><input type="radio" name="tripType" value="${k}" ${k === type ? 'checked' : ''}>${TYPE_ICON[k]} ${TYPE_LABEL[k]}</label>`).join('')}
+      </div></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="field"><label for="f_sd">出発日</label><input class="inp" id="f_sd" type="date" name="startDate" value="${esc(defStart)}"></div>
+        <div class="field"><label for="f_ed">帰着日</label><input class="inp" id="f_ed" type="date" name="endDate" value="${esc(t.endDate || '')}"></div>
+      </div>
+      <div class="field"><label for="f_desc">メモ</label><textarea class="inp" id="f_desc" name="description" rows="3" maxlength="2000" placeholder="一緒に行った人、天気、車体のことなど">${esc(t.description || '')}</textarea></div>
+      ${isNew ? `<div class="field"><span class="lbl">ルート（あとからでも追加できます）</span>
+        <label class="drop small" data-drop="trip"><span id="tripRouteLbl">${pr ? '読み込み済み：' + esc(pr.name || 'ルート') + '（' + fmtKm(computeStats(pr.points).distanceKm) + ' km）' : 'GPX・KML・GeoJSON をドロップ、またはタップして選ぶ'}</span>
+        <input type="file" id="tripRouteFile" accept=".gpx,.kml,.geojson,.json" hidden></label></div>` : ''}
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">${isNew ? 'トリップを作成' : '保存する'}</button>
+    </form>`);
+  const rf = $('#tripRouteFile');
+  if (rf) rf.addEventListener('change', () => { if (rf.files[0]) setTripFormRoute(rf.files[0]); });
+  bindForm($('#fTrip'), async d => {
+    const r = await api('saveTrip', { trip: { tripId: t.tripId || '', title: d.title, tripType: d.tripType, startDate: d.startDate, endDate: d.endDate, description: d.description }, spotCount: S.spots.length });
+    let trip = r.trip;
+    if (isNew && S.pendingRoute) {
+      const p = S.pendingRoute, st = computeStats(p.points);
+      const rr = await api('saveRoute', { tripId: trip.tripId, spotCount: 0, route: { name: p.name, points: p.points, stats: routeStatsPayload(st) } });
+      trip = rr.trip;
+    }
+    S.pendingRoute = null;
+    syncTripInList(trip);
+    closeModal();
+    if (isNew) { await openTrip(trip.tripId); toast('トリップを作成しました'); }
+    else { S.trip = { ...S.trip, ...trip }; renderPanel(); toast('保存しました'); }
+  });
+}
+async function setTripFormRoute(file) {
+  try {
+    const r = normalizeRoute(parseRouteText(await file.text(), file.name.replace(/\.[^.]+$/, '')));
+    S.pendingRoute = r;
+    $('#tripRouteLbl').textContent = '読み込み済み：' + (r.name || file.name) + '（' + fmtKm(computeStats(r.points).distanceKm) + ' km）';
+    const ti = $('#f_title'); if (ti && !ti.value) ti.value = r.name || '';
+    const sd = $('#f_sd'); if (sd && r.points[0][3]) sd.value = dateOf(r.points[0][3]);
+  } catch (e) { toast(e.message, 'err'); }
+}
+function routeStatsPayload(st) {
+  return { distanceKm: st.distanceKm, elevationGainM: st.elevationGainM, durationSec: st.durationSec, startTime: st.startTime };
+}
+async function deleteTrip() {
+  if (!confirm(`「${S.trip.title}」を削除します。ルート・スポット・写真・動画もすべて削除され、元に戻せません。よろしいですか？`)) return;
+  try {
+    await api('deleteTrip', { tripId: S.trip.tripId });
+    S.trips = S.trips.filter(x => x.tripId !== S.trip.tripId);
+    closeTrip(); toast('トリップを削除しました');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+/* ---------- route import ---------- */
+async function importRoute(raw) {
+  const r = normalizeRoute(raw);
+  if (S.user && !S.trip) { openTripForm(null, r); return; }
+  if (S.user && S.trip) {
+    if (S.route && !confirm('今のルートを新しいものに置き換えますか？')) return;
+    toast('ルートを保存しています…');
+    const st = computeStats(r.points);
+    const res = await api('saveRoute', { tripId: S.trip.tripId, spotCount: S.spots.length, route: { name: r.name, points: r.points, stats: routeStatsPayload(st) } });
+    S.trip = { ...S.trip, ...res.trip };
+    syncTripInList(S.trip);
+    setRoute(r); fitAll(); renderPanel();
+    toast('ルートを保存しました');
+    return;
+  }
+  setRoute(r); fitAll(); renderPanel();
+  toast('ルートを表示しています。ログインすると保存できます');
+}
+function openImport() {
+  openModal(`<div class="mhead"><h3>ルートを読み込む</h3>${X_BTN}</div>
+    <div class="tabs" role="tablist">
+      <button class="tab" data-act="impTab" data-tab="file">ファイル</button>
+      <button class="tab" data-act="impTab" data-tab="url">URL</button>
+      <button class="tab" data-act="impTab" data-tab="text">テキスト・共有コード</button>
+    </div><div id="impBody"></div>`);
+  renderImp('file');
+}
+function renderImp(tab) {
+  $$('#modalRoot [data-act=impTab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const el = $('#impBody');
+  if (tab === 'file') {
+    el.innerHTML = `<label class="drop" data-drop="import">GPX・KML・GeoJSON をドロップ<br>またはタップしてファイルを選ぶ
+      <input type="file" id="impFile" accept=".gpx,.kml,.geojson,.json" hidden></label>
+      <p class="hint">Strava・Garmin・Googleマイマップ・ルートラボ系サービスの書き出しファイルに対応しています。KMZ は解凍して中の KML を選んでください。</p>
+      <p class="ferr"></p>`;
+    $('#impFile').addEventListener('change', e => { if (e.target.files[0]) importFromFile(e.target.files[0]); });
+  } else if (tab === 'url') {
+    el.innerHTML = `<form id="fImpUrl" novalidate>
+      <div class="field"><label for="f_url">ルートファイルのURL</label><input class="inp" id="f_url" name="url" type="url" required placeholder="https://example.com/route.gpx"></div>
+      <p class="hint mb-3">GPX・KML・GeoJSON を直接ダウンロードできるURLを入力してください。サイトの表示ページのURLでは読み込めません。</p>
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">読み込む</button></form>`;
+    bindForm($('#fImpUrl'), async d => {
+      const url = d.url.trim();
+      if (!/^https?:\/\//i.test(url)) throw new Error('http(s) で始まるURLを入力してください');
+      let text;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error();
+        text = await res.text();
+      } catch (e) {
+        if (!S.user) throw new Error('このURLはブラウザから直接読めませんでした。ログインするとサーバー経由で読み込めます');
+        text = (await api('fetchRemote', { url })).text;
+      }
+      const name = decodeURIComponent(url.split('/').pop().split('?')[0] || '').replace(/\.[^.]+$/, '');
+      const parsed = parseRouteText(text, name);
+      closeModal();
+      await importRoute(parsed);
+    });
+  } else {
+    el.innerHTML = `<form id="fImpText" novalidate>
+      <div class="field"><label for="f_txt">GPX・KML・GeoJSON の中身、または共有コード</label>
+      <textarea class="inp" id="f_txt" name="text" rows="8" required placeholder="&lt;gpx ...&gt; や { &quot;type&quot;: &quot;FeatureCollection&quot; ... } を貼り付け"></textarea>
+      <p class="hint">共有コードは、トリップ画面の「共有コードをコピー」で作れます。</p></div>
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">読み込む</button></form>`;
+    bindForm($('#fImpText'), async d => {
+      const parsed = parseRouteText(d.text, '貼り付けたルート');
+      closeModal();
+      await importRoute(parsed);
+    });
+  }
+}
+async function importFromFile(file) {
+  try {
+    const parsed = parseRouteText(await file.text(), file.name.replace(/\.[^.]+$/, ''));
+    if (!$('#modalRoot').classList.contains('hidden') && $('#impBody')) closeModal();
+    await importRoute(parsed);
+  } catch (e) {
+    const err = $('#impBody .ferr');
+    if (err) err.textContent = e.message; else toast(e.message, 'err');
+  }
+}
+function exportGpx() {
+  if (!S.route) return;
+  const x = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  const name = (S.trip && S.trip.title) || S.route.name || 'route';
+  const pts = S.route.points.map(p => `<trkpt lat="${p[0]}" lon="${p[1]}">${p[2] != null ? `<ele>${p[2]}</ele>` : ''}${p[3] != null ? `<time>${new Date(p[3]).toISOString()}</time>` : ''}</trkpt>`).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="wadachi-log" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${x(name)}</name><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>\n`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([xml], { type: 'application/gpx+xml' }));
+  a.download = name.replace(/[\\/:*?"<>|]/g, '_') + '.gpx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function copyText(text, okMsg) {
+  try { await navigator.clipboard.writeText(text); toast(okMsg); }
+  catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast(okMsg); } catch (x) { toast('コピーできませんでした', 'err'); }
+    ta.remove();
+  }
+}
+
+/* ---------- media ---------- */
+function resizeImage(file, max, q) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const s = Math.min(1, max / Math.max(w, h));
+      w = Math.round(w * s); h = Math.round(h * s);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? res(b) : rej(new Error('画像を変換できませんでした')), 'image/jpeg', q);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('画像を読み込めませんでした')); };
+    img.src = url;
+  });
+}
+async function prepareUpload(f) {
+  if (/^video\//.test(f.type)) {
+    if (f.size > MAX_VIDEO_MB * 1048576) throw new Error(`動画「${f.name}」は${MAX_VIDEO_MB}MBを超えています。短く切り出してから追加してください`);
+    return { name: f.name, mimeType: f.type, blob: f };
+  }
+  if (f.type === 'image/gif') return { name: f.name, mimeType: f.type, blob: f };
+  try {
+    const b = await resizeImage(f, 2048, 0.85);
+    return { name: f.name.replace(/\.[^.]+$/, '') + '.jpg', mimeType: 'image/jpeg', blob: b };
+  } catch (e) {
+    if (f.size > 20 * 1048576) throw new Error(`写真「${f.name}」を読み込めませんでした`);
+    return { name: f.name, mimeType: f.type || 'image/jpeg', blob: f };
+  }
+}
+function blobToB64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('ファイルを読み込めませんでした'));
+    r.readAsDataURL(blob);
+  });
+}
+async function uploadFile(file) {
+  const p = await prepareUpload(file);
+  const data = await blobToB64(p.blob);
+  const r = await api('uploadMedia', { tripId: S.trip.tripId, fileName: p.name, mimeType: p.mimeType, data });
+  if (r.warning) toast(r.warning, 'err');
+  return r.media;
+}
+async function readExif(f) {
+  const out = { lat: null, lng: null, time: null };
+  if (!/^image\//.test(f.type) || !window.exifr) return out;
+  try {
+    const x = await exifr.parse(f, { gps: true });
+    if (x) {
+      if (isFinite(x.latitude) && isFinite(x.longitude)) { out.lat = x.latitude; out.lng = x.longitude; }
+      const d = x.DateTimeOriginal || x.CreateDate;
+      if (d instanceof Date && !isNaN(d)) out.time = d.getTime();
+    }
+  } catch (e) { /* Exifなし */ }
+  return out;
+}
+function requireTrip() {
+  if (!S.user) { toast('保存にはログインが必要です', 'err'); openAuth('login'); return false; }
+  if (!S.trip) { toast('先にトリップを開くか、新しく作ってください', 'err'); return false; }
+  return true;
+}
+function upsertSpot(s) {
+  const i = S.spots.findIndex(x => x.spotId === s.spotId);
+  if (i >= 0) S.spots[i] = s; else S.spots.push(s);
+  S.trip.spotCount = S.spots.length;
+  syncTripInList({ tripId: S.trip.tripId, spotCount: S.spots.length });
+}
+async function addMediaFlow(files) {
+  if (!requireTrip()) return;
+  files = files.filter(f => /^(image|video)\//.test(f.type));
+  if (!files.length) return;
+  toast('撮影地点を読み取っています…');
+  const items = [];
+  for (const f of files) items.push({ file: f, ...(await readExif(f)) });
+  const geo = items.filter(x => x.lat != null).sort((a, b) => (a.time || 0) - (b.time || 0));
+  const noGeo = items.filter(x => x.lat == null);
+  // 80m以内に続けて撮った写真は同じスポットにまとめる
+  const groups = [];
+  geo.forEach(it => {
+    const g = groups[groups.length - 1];
+    if (g && hav([g.lat, g.lng], [it.lat, it.lng]) < 80) g.items.push(it);
+    else groups.push({ lat: it.lat, lng: it.lng, time: it.time, items: [it] });
+  });
+  if (!groups.length) { placeManually(noGeo); return; }
+  openModal(`<div class="mhead"><h3>写真を撮影地点に配置</h3>${X_BTN}</div>
+    <p style="line-height:1.8">位置情報つきの写真 <b>${geo.length}枚</b> を、撮影地点ごとに <b>${groups.length}か所</b> のピンとして追加します。</p>
+    ${noGeo.length ? `<p class="text-sm muted mt-2" style="line-height:1.7">位置情報のない ${noGeo.length}件（動画を含む）は、このあと地図をタップして場所を決めます。</p>` : ''}
+    <p class="ferr"></p><p id="plProg" class="text-sm muted"></p>
+    <div class="flex justify-end gap-2 mt-4"><button class="btn btn-ghost" data-act="closeModal">やめる</button><button class="btn btn-route" id="plGo">追加する</button></div>`);
+  $('#plGo').addEventListener('click', async ev => {
+    const btn = ev.currentTarget;
+    btn.disabled = true; modalLocked = true;
+    let done = 0;
+    try {
+      for (const g of groups) {
+        const media = [];
+        for (const it of g.items) {
+          $('#plProg').textContent = `アップロード中 ${++done} / ${geo.length}`;
+          media.push(await uploadFile(it.file));
+        }
+        const r = await api('saveSpot', { spot: { tripId: S.trip.tripId, lat: g.lat, lng: g.lng, title: '', memo: '', takenAt: g.time ? new Date(g.time).toISOString() : '', source: 'exif', media } });
+        upsertSpot(r.spot);
+      }
+      closeModal(true); drawSpots(); fitAll(); renderPanel();
+      toast(`${groups.length}か所にピンを追加しました`);
+      placeManually(noGeo);
+    } catch (e) {
+      modalLocked = false; btn.disabled = false;
+      $('#modalRoot .ferr').textContent = e.message + '（追加できた分は保存されています）';
+      drawSpots(); renderPanel();
+    }
+  });
+}
+function placeManually(items) {
+  if (!items.length) return;
+  const t = items.map(x => x.time).filter(Boolean).sort((a, b) => a - b)[0];
+  startPick(`位置情報のない${items.length}件の場所をタップ`, ll => {
+    openSpotEditor({ lat: ll.lat, lng: ll.lng, source: 'map', takenAt: t ? new Date(t).toISOString() : '' }, items.map(x => x.file));
+  });
+}
+
+/* ---------- spot editor ---------- */
+function openSpotEditor(spot, files = []) {
+  S.editor = { spot: { title: '', memo: '', takenAt: '', media: [], ...spot, media: [...(spot.media || [])] }, files: [...files] };
+  renderSpotEditor();
+}
+function renderSpotEditor() {
+  const sp = S.editor.spot, isNew = !sp.spotId;
+  openModal(`<div class="mhead"><h3>${isNew ? 'スポットを追加' : 'スポットを編集'}</h3>${X_BTN}</div>
+    <form id="fSpot" novalidate>
+      <div class="field"><label for="f_st">場所の名前</label><input class="inp" id="f_st" name="title" maxlength="80" placeholder="例：峠の茶屋、道の駅" value="${esc(sp.title)}"></div>
+      <div class="field"><label for="f_sa">日時</label><input class="inp" id="f_sa" type="datetime-local" name="takenAt" value="${esc(toLocalInput(sp.takenAt))}"></div>
+      <div class="field"><label for="f_sm">メモ</label><textarea class="inp" id="f_sm" name="memo" rows="4" maxlength="4000" placeholder="食べたもの、景色、道の状態など">${esc(sp.memo)}</textarea></div>
+      <p class="text-sm mb-4">位置 <span class="num" style="font-size:15px">${Number(sp.lat).toFixed(5)}, ${Number(sp.lng).toFixed(5)}</span>
+        <button type="button" class="lnk ml-2" data-act="repick">地図で選び直す</button></p>
+      <div class="field"><span class="lbl">写真・動画</span><div id="edMedia" class="edmedia"></div>
+        <label class="drop small" data-drop="editor">写真・動画をドロップ、またはタップして選ぶ<input type="file" id="edFiles" accept="image/*,video/*" multiple hidden></label></div>
+      <p class="ferr"></p><p id="edProg" class="text-sm muted"></p>
+      <div class="flex gap-2 items-center">${isNew ? '' : '<button type="button" class="btn btn-ghost danger" data-act="deleteSpot">削除</button>'}
+        <button type="submit" class="btn btn-route ml-auto">保存する</button></div>
+    </form>`);
+  renderEdMedia();
+  $('#edFiles').addEventListener('change', e => { addEditorFiles([...e.target.files]); e.target.value = ''; });
+  bindForm($('#fSpot'), saveSpotFromEditor);
+}
+function addEditorFiles(files) {
+  S.editor.files.push(...files.filter(f => /^(image|video)\//.test(f.type)));
+  renderEdMedia();
+}
+function captureEditorFields() {
+  const f = $('#fSpot');
+  if (!f) return;
+  const sp = S.editor.spot;
+  const el = f.elements;
+  sp.title = el.title.value; sp.memo = el.memo.value; sp.takenAt = fromLocalInput(el.takenAt.value);
+}
+function renderEdMedia() {
+  const el = $('#edMedia');
+  if (!el) return;
+  $$('[data-objurl]', el).forEach(x => URL.revokeObjectURL(x.dataset.objurl));
+  const ex = S.editor.spot.media.map((m, i) => `<div class="edm"><img src="${esc(thumbUrl(m.fileId, 200))}" alt="" onerror="this.remove()">${isVideo(m) ? '<span class="vd">▶</span>' : ''}
+    <button type="button" class="rm" data-act="edRemove" data-i="${i}" aria-label="外す">×</button></div>`);
+  const nw = S.editor.files.map((f, i) => {
+    const u = URL.createObjectURL(f);
+    const inner = /^video\//.test(f.type) ? `<video src="${u}" muted playsinline data-objurl="${u}"></video><span class="vd">▶</span>` : `<img src="${u}" alt="" data-objurl="${u}">`;
+    return `<div class="edm">${inner}<span class="tag">未保存</span><button type="button" class="rm" data-act="edRemoveNew" data-i="${i}" aria-label="外す">×</button></div>`;
+  });
+  el.innerHTML = ex.concat(nw).join('');
+}
+async function saveSpotFromEditor() {
+  captureEditorFields();
+  const ed = S.editor, sp = ed.spot;
+  modalLocked = true;
+  try {
+    const total = ed.files.length;
+    let n = 0;
+    while (ed.files.length) { // 1件ずつ上げ、成功したものから確定（再試行で重複しない）
+      $('#edProg').textContent = `アップロード中 ${++n} / ${total}`;
+      const m = await uploadFile(ed.files[0]);
+      sp.media.push(m); ed.files.shift(); renderEdMedia();
+    }
+    $('#edProg').textContent = '保存しています…';
+    const r = await api('saveSpot', { spot: { spotId: sp.spotId || '', tripId: S.trip.tripId, lat: sp.lat, lng: sp.lng, title: sp.title, memo: sp.memo, takenAt: sp.takenAt, source: sp.source || 'map', media: sp.media } });
+    upsertSpot(r.spot);
+    S.editor = null;
+    closeModal(true); drawSpots(); renderPanel();
+    toast('スポットを保存しました');
+  } finally {
+    modalLocked = false;
+    const p = $('#edProg'); if (p) p.textContent = '';
+  }
+}
+async function deleteSpot() {
+  const sp = S.editor.spot;
+  if (!confirm('このスポットを削除します。添付した写真・動画も削除されます。よろしいですか？')) return;
+  try {
+    await api('deleteSpot', { spotId: sp.spotId });
+    S.spots = S.spots.filter(x => x.spotId !== sp.spotId);
+    S.trip.spotCount = S.spots.length;
+    syncTripInList({ tripId: S.trip.tripId, spotCount: S.spots.length });
+    S.editor = null;
+    closeModal(true); drawSpots(); renderPanel(); toast('スポットを削除しました');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+/* ---------- viewer ---------- */
+function openViewer(spotId, i = 0) {
+  const s = S.spots.find(x => x.spotId === spotId);
+  if (!s) return;
+  const n = (s.media || []).length;
+  S.viewer = { s, i: Math.max(0, Math.min(i, n - 1)) };
+  renderViewer();
+}
+function renderViewer() {
+  const { s, i } = S.viewer;
+  const media = s.media || [], m = media[i], n = media.length;
+  openModal(`<div class="mhead"><h3>${esc(s.title || '名称未設定のスポット')}</h3>${X_BTN}</div>
+    ${m ? `<div class="stage">${isVideo(m)
+      ? `<iframe src="${esc(previewUrl(m.fileId))}" allow="autoplay; fullscreen" allowfullscreen title="動画"></iframe>`
+      : `<img src="${esc(thumbUrl(m.fileId, 1600))}" alt="${esc(s.title || '写真')}">`}
+      ${n > 1 ? `<button class="nav prev" data-act="lbNav" data-d="-1" aria-label="前へ">‹</button><button class="nav next" data-act="lbNav" data-d="1" aria-label="次へ">›</button><span class="cnt num">${i + 1} / ${n}</span>` : ''}</div>` : ''}
+    ${s.takenAt ? `<p class="muted text-sm mt-3 num" style="font-size:16px">${esc(fmtTime(s.takenAt))}</p>` : ''}
+    ${s.memo ? `<p class="vmemo">${esc(s.memo)}</p>` : (m ? '' : '<p class="muted">写真やメモはまだありません。</p>')}
+    <div class="flex flex-wrap gap-2 mt-4">
+      ${S.trip ? `<button class="btn btn-ghost btn-sm" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}
+      ${m ? `<a class="btn btn-ghost btn-sm" href="${esc(viewUrl(m.fileId))}" target="_blank" rel="noopener">Googleドライブで開く</a>` : ''}
+    </div>`, { wide: true });
+}
+
+/* ---------- AI ---------- */
+async function aiGen(btn) {
+  const mode = btn.dataset.mode;
+  const field = { summary: 'aiSummary', highlights: 'aiHighlights', sns: 'aiSns' }[mode];
+  if (S.trip[field] && !confirm('今の文章を新しく作り直しますか？（手で直した部分も上書きされます）')) return;
+  btn.disabled = true; btn.textContent = '生成中…';
+  try {
+    const r = await api('generateAi', { tripId: S.trip.tripId, mode, usePhotos: S.aiPhotos });
+    S.trip[field] = r.text;
+    syncTripInList({ tripId: S.trip.tripId, [field]: r.text });
+    renderPanel();
+    toast('文章を作成しました');
+  } catch (e) {
+    toast(e.message, 'err');
+    if (btn.isConnected) { btn.disabled = false; btn.textContent = S.trip[field] ? '作り直す' : '生成する'; }
+  }
+}
+
+/* ============================================================
+ * 操作の振り分け
+ * ============================================================ */
+const ACT = {
+  login: () => openAuth('login'),
+  register: () => openAuth('register'),
+  authTab: el => renderAuthBody(el.dataset.tab),
+  impTab: el => renderImp(el.dataset.tab),
+  eye: el => {
+    const inp = el.parentElement.querySelector('input');
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    el.innerHTML = show ? EYE_OFF : EYE;
+    el.setAttribute('aria-label', show ? 'パスワードを隠す' : 'パスワードを表示');
+  },
+  menu: el => { const m = $('#acctMenu'); const open = m.classList.toggle('hidden') === false; el.setAttribute('aria-expanded', open); },
+  logout: () => { if (confirm('ログアウトしますか？')) logout(false); },
+  changePw: () => openChangePw(false),
+  editName: () => openEditName(),
+  closeModal: () => closeModal(),
+  sheet: () => {},
+  newTrip: () => { if (!S.user) return openAuth('register'); openTripForm(null, null); },
+  openTrip: el => openTrip(el.dataset.id),
+  backList: () => { closeTrip(); loadTrips(); },
+  editTrip: () => openTripForm(S.trip),
+  deleteTrip: () => deleteTrip(),
+  importRoute: () => openImport(),
+  pickRoute: () => $('#fileRoute').click(),
+  addMedia: () => { if (requireTrip()) $('#filePhotos').click(); },
+  pinMode: () => { if (requireTrip()) startPick('ピンを置く場所を地図でタップ', ll => openSpotEditor({ lat: ll.lat, lng: ll.lng, source: 'map', takenAt: '' })); },
+  cancelPick: () => endPick(),
+  tab: el => { S.tab = el.dataset.tab; renderPanel(); },
+  focusSpot: el => {
+    const s = S.spots.find(x => x.spotId === el.dataset.id);
+    if (!s) return;
+    setSheet('peek');
+    map.flyTo([s.lat, s.lng], Math.max(map.getZoom(), 15), { duration: .6 });
+    spotLayer.eachLayer(l => { if (l._spotId === s.spotId) setTimeout(() => l.openPopup(), 650); });
+  },
+  viewSpot: el => { map.closePopup(); openViewer(el.dataset.id, Number(el.dataset.i) || 0); },
+  editSpot: el => {
+    const s = S.spots.find(x => x.spotId === el.dataset.id);
+    if (!s || !S.trip) return;
+    map.closePopup();
+    openSpotEditor(JSON.parse(JSON.stringify(s)));
+  },
+  deleteSpot: () => deleteSpot(),
+  repick: () => {
+    captureEditorFields();
+    closeModal(true);
+    startPick('新しい場所を地図でタップ', ll => { S.editor.spot.lat = ll.lat; S.editor.spot.lng = ll.lng; renderSpotEditor(); });
+  },
+  edRemove: el => { captureEditorFields(); S.editor.spot.media.splice(Number(el.dataset.i), 1); renderEdMedia(); },
+  edRemoveNew: el => { S.editor.files.splice(Number(el.dataset.i), 1); renderEdMedia(); },
+  lbNav: el => {
+    const n = S.viewer.s.media.length;
+    S.viewer.i = (S.viewer.i + Number(el.dataset.d) + n) % n;
+    renderViewer();
+  },
+  aiGen: el => aiGen(el),
+  copy: el => { const t = $(el.dataset.target); if (t) copyText(t.value, 'コピーしました'); },
+  exportGpx: () => exportGpx(),
+  copyShare: () => { if (S.route) copyText(JSON.stringify({ wadachi: 1, name: (S.trip && S.trip.title) || S.route.name, points: S.route.points }), '共有コードをコピーしました。「ルートを読み込む」→「テキスト・共有コード」に貼り付けると読み込めます'); },
+  togglePlay: () => showPlaybar(!PB.on),
+  pbPlay: () => pbPlay()
+};
+function runAct(el, e) { const fn = ACT[el.dataset.act]; if (fn) fn(el, e); }
+
+/* ---------- global events ---------- */
+function hasFiles(e) { return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'); }
+async function handleDroppedFiles(files, zone) {
+  files = Array.from(files);
+  if (zone === 'import') { const f = files.find(x => ROUTE_EXT.test(x.name)) || files[0]; if (f) importFromFile(f); return; }
+  if (zone === 'trip') { const f = files.find(x => ROUTE_EXT.test(x.name)); if (f) setTripFormRoute(f); else toast('GPX・KML・GeoJSON を選んでください', 'err'); return; }
+  if (zone === 'editor') { addEditorFiles(files); return; }
+  if (!$('#modalRoot').classList.contains('hidden')) return; // モーダル表示中は背面へのドロップを無視
+  const routeF = files.find(f => ROUTE_EXT.test(f.name));
+  const media = files.filter(f => /^(image|video)\//.test(f.type));
+  if (routeF) {
+    try { await importRoute(parseRouteText(await routeF.text(), routeF.name.replace(/\.[^.]+$/, ''))); }
+    catch (e) { toast(e.message, 'err'); }
+  }
+  if (media.length) addMediaFlow(media);
+  if (!routeF && !media.length) toast('読み込めるのは GPX・KML・GeoJSON と、写真・動画です', 'err');
+}
+function bindGlobal() {
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-act]');
+    const menu = $('#acctMenu');
+    if (menu && !menu.classList.contains('hidden') && (!e.target.closest('#acctWrap') || e.target.closest('#acctMenu button'))) menu.classList.add('hidden');
+    if (el && el.dataset.act !== 'sheet') runAct(el, e);
+  });
+  $('#modalRoot').addEventListener('mousedown', e => { if (e.target.id === 'modalRoot') closeModal(); });
+  document.addEventListener('change', e => { if (e.target.id === 'aiPhotos') S.aiPhotos = e.target.checked; });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!$('#modalRoot').classList.contains('hidden')) closeModal();
+      else if (S.pick) endPick();
+      else { const m = $('#acctMenu'); if (m) m.classList.add('hidden'); }
+    }
+    if (S.viewer && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && S.viewer.s.media.length > 1) {
+      ACT.lbNav({ dataset: { d: e.key === 'ArrowRight' ? 1 : -1 } });
+    }
+  });
+  $('#fileRoute').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) handleDroppedFiles([f]); });
+  $('#filePhotos').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) addMediaFlow(fs); });
+  $('#pbRange').addEventListener('input', e => { pbPause(); pbSet(Number(e.target.value) / 1000); });
+
+  let dragN = 0;
+  const ov = $('#dropOverlay');
+  document.addEventListener('dragenter', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragN++;
+    if ($('#modalRoot').classList.contains('hidden')) ov.classList.remove('hidden');
+    const z = e.target.closest && e.target.closest('[data-drop]'); if (z) z.classList.add('over');
+  });
+  document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener('dragleave', e => {
+    if (!hasFiles(e)) return;
+    dragN = Math.max(0, dragN - 1);
+    const z = e.target.closest && e.target.closest('[data-drop]'); if (z) z.classList.remove('over');
+    if (!dragN) ov.classList.add('hidden');
+  });
+  document.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragN = 0; ov.classList.add('hidden');
+    const z = e.target.closest && e.target.closest('[data-drop]');
+    $$('[data-drop].over').forEach(x => x.classList.remove('over'));
+    handleDroppedFiles(e.dataTransfer.files, z ? z.dataset.drop : null);
+  });
+  window.addEventListener('resize', () => map && map.invalidateSize());
+  bindSheet();
+}
+
+/* ============================================================
+ * 起動
+ * ============================================================ */
+async function boot() {
+  initMap();
+  bindGlobal();
+  renderAll();
+  if (!S.token) return;
+  try {
+    const r = await api('me');
+    setSession(null, r.user);
+    renderHeader();
+    await loadTrips();
+    const id = new URLSearchParams(location.search).get('trip');
+    if (id) await openTrip(id);
+    if (r.user.mustChangePassword) openChangePw(true);
+  } catch (e) {
+    if (e.code !== 'AUTH') toast(e.message, 'err');
+  }
+}
+boot();
+</script>
+</body>
+</html>
