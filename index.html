@@ -290,7 +290,7 @@
 /* ============================================================
  * 設定：GASウェブアプリのURLを貼り付けてください
  * ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/execAS_WEB_APP_URL_HERE';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const MAX_VIDEO_MB = 28;
 
 const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
@@ -345,12 +345,13 @@ function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.
 function dateOf(ms) { const d = new Date(ms); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 
 /* ---------- API ---------- */
-function gasReady() { return GAS_URL && !GAS_URL.includes('PASTE_'); }
+const GAS_URL_OK = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(GAS_URL.trim());
+function gasReady() { return GAS_URL_OK; }
 async function api(action, data = {}) {
-  if (!gasReady()) throw new Error('GAS_URL が未設定です（index.html の冒頭で設定してください）');
+  if (!gasReady()) throw new Error('GAS_URL の形式が正しくありません。index.html 冒頭の GAS_URL を「https://script.google.com/macros/s/…/exec」だけにしてください（/exec の後ろに文字が残っていないか確認）');
   let res;
   try {
-    res = await fetch(GAS_URL, {
+    res = await fetch(GAS_URL.trim(), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // プリフライトを発生させない
       body: JSON.stringify({ action, token: S.token, ...data })
@@ -772,7 +773,7 @@ function welcomeHtml() {
       <button class="btn btn-ghost btn-sm mt-3" data-act="pickRoute">ルートファイルを選ぶ</button>
       ${S.route ? meterHtml() + profileHtml() + `<div class="subacts"><button class="lnk" data-act="togglePlay">ルートを再生</button></div>` : ''}
     </div>
-    ${gasReady() ? '' : '<p class="note">管理者の方へ：index.html の GAS_URL がまだ設定されていません。</p>'}`;
+    ${gasReady() ? '' : '<p class="note">管理者の方へ：index.html の GAS_URL が未設定か、形式が正しくありません（…/exec で終わるURLだけを入れてください）。</p>'}`;
 }
 
 function listHtml() {
