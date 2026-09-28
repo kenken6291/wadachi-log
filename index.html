@@ -219,6 +219,18 @@
   .mhead h3 { font-size: 18px; font-weight: 700; }
   .x { width: 36px; height: 36px; border-radius: 50%; font-size: 22px; line-height: 1; color: var(--muted); background: none; border: 0; flex: none; }
   .x:hover { background: var(--mist); }
+  #modalRoot.peek { background: transparent; pointer-events: none; }
+  #modalRoot.peek .modal { pointer-events: auto; }
+  #modalRoot.peek .modal { max-height: 58vh; box-shadow: 0 -8px 28px rgba(31,46,41,.25); }
+  @media (min-width: 768px) {
+    #modalRoot.peek { justify-content: flex-end; align-items: flex-end; padding: 20px; }
+    #modalRoot.peek .modal { max-width: 420px; max-height: 80vh; box-shadow: 0 12px 36px rgba(31,46,41,.3); }
+  }
+  .imgprev { margin-top: 10px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--mist); }
+  .imgprev img { width: 100%; max-height: 260px; object-fit: contain; display: block; }
+  .bigkm { font-family: "Barlow Condensed", sans-serif; font-size: 40px; font-weight: 600; line-height: 1; }
+  .bigkm small { font-size: 16px; margin-left: 3px; color: var(--muted); }
+  .via { font-size: 13px; line-height: 1.7; color: #33443E; }
   .edmedia { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   .edm { position: relative; width: 76px; height: 76px; border-radius: 10px; overflow: hidden; background: var(--mist); }
   .edm img, .edm video { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -313,7 +325,8 @@ const S = {
   route: null, stats: null,
   tab: 'timeline', aiPhotos: true,
   pick: null, editor: null, viewer: null, pendingRoute: null,
-  lastEmail: '', tempPw: ''
+  lastEmail: '', tempPw: '',
+  imgFile: null, imgRoute: null
 };
 
 /* ---------- helpers ---------- */
@@ -374,7 +387,7 @@ async function api(action, data = {}) {
 /* ============================================================
  * 地図
  * ============================================================ */
-let map, routeLayer, spotLayer, hoverMarker;
+let map, routeLayer, spotLayer, previewLayer, hoverMarker;
 function initMap() {
   const gsiPale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
     maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' });
@@ -389,6 +402,7 @@ function initMap() {
   L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
   routeLayer = L.layerGroup().addTo(map);
   spotLayer = L.layerGroup().addTo(map);
+  previewLayer = L.layerGroup().addTo(map);
 
   map.on('click', e => {
     if (S.pick) { const cb = S.pick; endPick(); cb(e.latlng); }
@@ -863,7 +877,8 @@ function openModal(html, opt = {}) {
   modalLocked = !!opt.locked;
   const root = $('#modalRoot');
   root.innerHTML = `<div class="modal ${opt.wide ? 'wide' : ''}" role="dialog" aria-modal="true">${html}</div>`;
-  root.classList.remove('hidden');
+  root.className = opt.peek ? 'peek' : '';
+  if (!opt.peek && previewLayer) previewLayer.clearLayers();
   const f = root.querySelector('input:not([type=hidden]):not([type=file]), textarea, button');
   if (f && !isMobile()) setTimeout(() => f.focus(), 30);
 }
@@ -875,6 +890,7 @@ function closeModal(force) {
   root.classList.add('hidden');
   root.innerHTML = '';
   S.viewer = null;
+  if (previewLayer) previewLayer.clearLayers();
 }
 function bindForm(form, fn) {
   form.addEventListener('submit', async e => {
@@ -1125,7 +1141,8 @@ function openImport() {
     <div class="tabs" role="tablist">
       <button class="tab" data-act="impTab" data-tab="file">ファイル</button>
       <button class="tab" data-act="impTab" data-tab="url">URL</button>
-      <button class="tab" data-act="impTab" data-tab="text">テキスト・共有コード</button>
+      <button class="tab" data-act="impTab" data-tab="image">画像から</button>
+      <button class="tab" data-act="impTab" data-tab="text">テキスト</button>
     </div><div id="impBody"></div>`);
   renderImp('file');
 }
@@ -1135,7 +1152,7 @@ function renderImp(tab) {
   if (tab === 'file') {
     el.innerHTML = `<label class="drop" data-drop="import">GPX・KML・GeoJSON をドロップ<br>またはタップしてファイルを選ぶ
       <input type="file" id="impFile" accept=".gpx,.kml,.geojson,.json" hidden></label>
-      <p class="hint">Strava・Garmin・Googleマイマップ・ルートラボ系サービスの書き出しファイルに対応しています。KMZ は解凍して中の KML を選んでください。</p>
+      <p class="hint">Strava・Garmin・Googleマイマップなどの書き出しファイルに対応しています。KMZ は解凍して中の KML を選んでください。ファイルが無いときは「画像から」で、アクティビティマップの画面写真から経路を作れます。</p>
       <p class="ferr"></p>`;
     $('#impFile').addEventListener('change', e => { if (e.target.files[0]) importFromFile(e.target.files[0]); });
   } else if (tab === 'url') {
@@ -1160,6 +1177,8 @@ function renderImp(tab) {
       closeModal();
       await importRoute(parsed);
     });
+  } else if (tab === 'image') {
+    renderImpImage(el);
   } else {
     el.innerHTML = `<form id="fImpText" novalidate>
       <div class="field"><label for="f_txt">GPX・KML・GeoJSON の中身、または共有コード</label>
@@ -1172,6 +1191,97 @@ function renderImp(tab) {
       await importRoute(parsed);
     });
   }
+}
+/* ---------- 画像（スクリーンショット）から経路 ---------- */
+function renderImpImage(el) {
+  if (!S.user) {
+    el.innerHTML = `<p style="line-height:1.8">アクティビティマップの画面写真から経路を読み取るには、ログインが必要です。</p>
+      <button class="btn btn-route w-full mt-4" data-act="login">ログイン</button>`;
+    return;
+  }
+  el.innerHTML = `<label class="drop" data-drop="routeimg">経路が写った地図のスクリーンショットをドロップ<br>またはタップして画像を選ぶ
+      <input type="file" id="impImg" accept="image/*" hidden></label>
+    <p class="hint">記録アプリの「アクティビティマップ」などの画面から、線の形と地名を読み取って経路にします。地名がいくつか写っているほど正確になります。</p>
+    <div id="imgPrev"></div>
+    <p class="ferr"></p>
+    <button type="button" id="imgGo" class="btn btn-route w-full" ${S.imgFile ? '' : 'disabled'}>経路を読み取る</button>`;
+  $('#impImg').addEventListener('change', e => { if (e.target.files[0]) setRouteImage(e.target.files[0]); e.target.value = ''; });
+  $('#imgGo').addEventListener('click', readRouteImage);
+  if (S.imgFile) setRouteImage(S.imgFile);
+}
+function setRouteImage(file) {
+  if (!/^image\//.test(file.type)) { toast('画像ファイルを選んでください', 'err'); return; }
+  S.imgFile = file;
+  const box = $('#imgPrev');
+  if (!box) return;
+  $$('[data-objurl]', box).forEach(x => URL.revokeObjectURL(x.dataset.objurl));
+  const u = URL.createObjectURL(file);
+  box.innerHTML = `<div class="imgprev"><img src="${u}" alt="選んだ画像" data-objurl="${u}"></div>`;
+  const go = $('#imgGo'); if (go) go.disabled = false;
+}
+async function readRouteImage() {
+  const btn = $('#imgGo'), err = $('#impBody .ferr');
+  if (!S.imgFile) return;
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = '読み取り中…（30秒ほどかかります）';
+  modalLocked = true;
+  try {
+    let blob = S.imgFile, mime = S.imgFile.type;
+    try { blob = await resizeImage(S.imgFile, 1600, 0.9); mime = 'image/jpeg'; } catch (e) { /* 元画像のまま */ }
+    const data = await blobToB64(blob);
+    const r = await api('routeFromImage', { data, mimeType: mime, tripType: (S.trip && S.trip.tripType) || 'cycling' });
+    modalLocked = false;
+    S.imgFile = null;
+    S.imgRoute = {
+      name: r.name || '画像から読み取った経路', method: r.method, waypoints: r.waypoints || [],
+      directionKnown: r.directionKnown, raw: r.points, snapped: r.snapped ? r.snapped.points : null,
+      useSnap: !!r.snapped, reversed: false
+    };
+    renderImgResult(true);
+  } catch (e) {
+    modalLocked = false;
+    if (err.isConnected) { err.textContent = e.message; btn.disabled = false; btn.textContent = '経路を読み取る'; }
+    else toast(e.message, 'err');
+  }
+}
+function imgRoutePoints() {
+  const ir = S.imgRoute;
+  const p = ((ir.useSnap && ir.snapped) ? ir.snapped : ir.raw).map(x => x.slice());
+  return ir.reversed ? p.reverse() : p;
+}
+function drawImgPreview(fit) {
+  const pts = imgRoutePoints();
+  previewLayer.clearLayers();
+  const ll = pts.map(p => [p[0], p[1]]);
+  L.polyline(ll, { color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(previewLayer);
+  L.polyline(ll, { color: '#D1206B', weight: 4.5, dashArray: '10 8', interactive: false }).addTo(previewLayer);
+  L.circleMarker(ll[0], { radius: 8, color: '#fff', weight: 3, fillColor: '#2F5B4B', fillOpacity: 1 }).bindTooltip('スタート', { permanent: true, direction: 'top', offset: [0, -8] }).addTo(previewLayer);
+  L.circleMarker(ll[ll.length - 1], { radius: 8, color: '#fff', weight: 3, fillColor: '#1F2E29', fillOpacity: 1 }).bindTooltip('ゴール', { permanent: true, direction: 'top', offset: [0, -8] }).addTo(previewLayer);
+  if (fit) {
+    const b = L.latLngBounds(ll);
+    if (isMobile()) map.fitBounds(b, { paddingTopLeft: [30, 30], paddingBottomRight: [30, Math.round(window.innerHeight * 0.6)] });
+    else map.fitBounds(b, { paddingTopLeft: [40, 40], paddingBottomRight: [470, 40] });
+  }
+}
+function renderImgResult(fit) {
+  const ir = S.imgRoute;
+  const km = computeStats(imgRoutePoints()).distanceKm;
+  const via = ir.reversed ? [...ir.waypoints].reverse() : ir.waypoints;
+  openModal(`<div class="mhead"><h3>画像から読み取った経路</h3>${X_BTN}</div>
+    <p class="bigkm">約 ${fmtKm(km)}<small>km</small></p>
+    ${via.length ? `<p class="via mt-2">${via.map(esc).join(' → ')}</p>` : ''}
+    <div class="field mt-4"><span class="lbl">線の引き方</span><div class="seg">
+      <label><input type="radio" name="imgSnap" value="1" ${ir.useSnap ? 'checked' : ''} ${ir.snapped ? '' : 'disabled'}>道路に沿わせる</label>
+      <label><input type="radio" name="imgSnap" value="0" ${ir.useSnap ? '' : 'checked'}>画像の線のまま</label>
+    </div>${ir.snapped ? '' : '<p class="hint">道路に沿わせる処理ができなかったため、画像の線のままで表示しています。</p>'}</div>
+    ${ir.method === 'waypoints' ? '<p class="note" style="margin:0 0 12px">地図上の線を正確になぞれなかったため、通過した地名を結んだ経路です。形が大きく違う場合は、地名が多く写った画像でもう一度お試しください。</p>' : ''}
+    <p class="hint" style="line-height:1.7">地図上の点線で形を確かめてください。${ir.directionKnown ? '' : '画像からはスタートとゴールの区別がつかないため、逆なら「向きを反転」を押してください。'}距離は線から計算した目安です。</p>
+    <div class="flex gap-2 mt-4">
+      <button class="btn btn-ghost" data-act="imgReverse">向きを反転</button>
+      <button class="btn btn-route flex-1" data-act="imgUse">この経路で登録</button>
+    </div>`, { peek: true });
+  $$('#modalRoot input[name=imgSnap]').forEach(r => r.addEventListener('change', () => { ir.useSnap = r.value === '1'; renderImgResult(false); }));
+  drawImgPreview(fit);
 }
 async function importFromFile(file) {
   try {
@@ -1521,6 +1631,14 @@ const ACT = {
   copy: el => { const t = $(el.dataset.target); if (t) copyText(t.value, 'コピーしました'); },
   exportGpx: () => exportGpx(),
   copyShare: () => { if (S.route) copyText(JSON.stringify({ wadachi: 1, name: (S.trip && S.trip.title) || S.route.name, points: S.route.points }), '共有コードをコピーしました。「ルートを読み込む」→「テキスト・共有コード」に貼り付けると読み込めます'); },
+  imgReverse: () => { S.imgRoute.reversed = !S.imgRoute.reversed; renderImgResult(false); },
+  imgUse: async () => {
+    const ir = S.imgRoute;
+    const pts = imgRoutePoints();
+    closeModal(true);
+    S.imgRoute = null;
+    try { await importRoute({ name: ir.name, points: pts }); } catch (e) { toast(e.message, 'err'); }
+  },
   togglePlay: () => showPlaybar(!PB.on),
   pbPlay: () => pbPlay()
 };
@@ -1533,6 +1651,7 @@ async function handleDroppedFiles(files, zone) {
   if (zone === 'import') { const f = files.find(x => ROUTE_EXT.test(x.name)) || files[0]; if (f) importFromFile(f); return; }
   if (zone === 'trip') { const f = files.find(x => ROUTE_EXT.test(x.name)); if (f) setTripFormRoute(f); else toast('GPX・KML・GeoJSON を選んでください', 'err'); return; }
   if (zone === 'editor') { addEditorFiles(files); return; }
+  if (zone === 'routeimg') { const f = files.find(x => /^image\//.test(x.type)); if (f) setRouteImage(f); else toast('画像ファイルを選んでください', 'err'); return; }
   if (!$('#modalRoot').classList.contains('hidden')) return; // モーダル表示中は背面へのドロップを無視
   const routeF = files.find(f => ROUTE_EXT.test(f.name));
   const media = files.filter(f => /^(image|video)\//.test(f.type));
