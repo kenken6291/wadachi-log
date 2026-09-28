@@ -125,6 +125,24 @@
   .trip .tn { text-align: right; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
   .trip .tn b { font-size: 24px; font-weight: 600; }
   .trip .tn small { font-size: 11px; color: var(--muted); }
+  .vis { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 10px; background: var(--mist); color: #3E514A; border: 1px solid transparent; }
+  .vis.pub { background: #FCE4EF; color: #9C1650; }
+  button.vis:hover { border-color: currentColor; }
+  .like { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 700; color: var(--ink); }
+  .like .hrt { font-size: 16px; line-height: 1; color: var(--route); }
+  .like.on { background: #FCE4EF; border-color: #F2B8CF; color: #9C1650; }
+  .like b { font-family: "Barlow Condensed", sans-serif; font-size: 16px; font-weight: 600; }
+  .cms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .cm { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .cm.mine { border-color: #C9D8D0; background: #FAFCFA; }
+  .cm-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .cm-a { font-weight: 700; font-size: 14px; }
+  .cm-a small { font-weight: 400; color: var(--muted); margin-left: 2px; }
+  .cm-t { font-size: 14px; color: var(--muted); white-space: nowrap; }
+  .cm-b { font-size: 14px; line-height: 1.75; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .cm-x { display: flex; gap: 12px; justify-content: flex-end; }
+  .cm-form { margin-top: 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .owner { font-size: 13px; font-weight: 700; color: var(--moss); }
   .empty { background: #fff; border: 1px dashed #B6C2BB; border-radius: 12px; padding: 18px; line-height: 1.75; }
 
   /* ---------- trip detail: the cycle-computer ---------- */
@@ -321,6 +339,8 @@ const S = {
   token: ls.get('wadachi.token'),
   user: safeJSON(ls.get('wadachi.user')),
   trips: [], loading: false,
+  listTab: 'mine', publicTrips: [], publicLoaded: false,
+  comments: [], liked: false, likeCount: 0, editCmt: null, cmtDraft: '',
   trip: null, spots: [],
   route: null, stats: null,
   tab: 'timeline', aiPhotos: true,
@@ -554,6 +574,14 @@ function setRoute(r) {
   L.circleMarker(ll[0], { radius: 7, color: '#fff', weight: 3, fillColor: '#2F5B4B', fillOpacity: 1 }).bindTooltip('スタート').addTo(routeLayer);
   L.circleMarker(ll[ll.length - 1], { radius: 7, color: '#fff', weight: 3, fillColor: '#1F2E29', fillOpacity: 1 }).bindTooltip('ゴール').addTo(routeLayer);
 }
+const canEdit = () => !!(S.trip && S.trip.isOwner);
+function visBadge(t, asButton) {
+  const pub = t.visibility === 'members';
+  const label = pub ? '👥 会員に公開' : '🔒 非公開';
+  return asButton
+    ? `<button class="vis ${pub ? 'pub' : ''}" data-act="toggleVis" title="タップで公開範囲を切り替え">${label}</button>`
+    : `<span class="vis ${pub ? 'pub' : ''}">${label}</span>`;
+}
 function sortedSpots() {
   const t = s => s.takenAt ? Date.parse(s.takenAt) : Infinity;
   return [...S.spots].sort((a, b) => (t(a) - t(b)) || String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -576,7 +604,7 @@ function popupHtml(s, i) {
     ${s.takenAt ? `<p class="pop-d num">${esc(fmtTime(s.takenAt))}</p>` : ''}
     ${m.length ? `<div class="thumbs">${m.slice(0, 4).map((x, j) => thumbBtn(s, x, j)).join('')}</div>` : ''}
     ${s.memo ? `<p class="pop-m">${esc(s.memo.length > 90 ? s.memo.slice(0, 90) + '…' : s.memo)}</p>` : ''}
-    <div class="pop-a"><button class="lnk" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="0">開く</button>${S.trip ? `<button class="lnk" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}</div></div>`;
+    <div class="pop-a"><button class="lnk" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="0">開く</button>${canEdit() ? `<button class="lnk" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}</div></div>`;
 }
 function fitAll() {
   const b = L.latLngBounds([]);
@@ -763,6 +791,7 @@ function renderPanel() {
   else if (S.trip) body.innerHTML = tripHtml();
   else body.innerHTML = listHtml();
   bindProfile();
+  bindComments();
 }
 function pbPauseIfHidden() { if (!S.route && PB.on) showPlaybar(false); }
 
@@ -790,54 +819,156 @@ function welcomeHtml() {
     ${gasReady() ? '' : '<p class="note">管理者の方へ：index.html の GAS_URL が未設定か、形式が正しくありません（…/exec で終わるURLだけを入れてください）。</p>'}`;
 }
 
+function tripItemHtml(t, pub) {
+  return `<button class="trip" data-act="openTrip" data-id="${esc(t.tripId)}">
+    <span class="ti" aria-hidden="true">${TYPE_ICON[t.tripType] || '🧭'}</span>
+    <span class="tb"><span class="tt">${esc(t.title)}</span>
+      <span class="tm">${esc(fmtDate(t.startDate)) || '日付なし'}</span>
+      <span class="tm" style="margin-top:4px">${pub ? `<span class="owner">${esc(t.ownerName)} さん${t.isOwner ? '（自分）' : ''}</span>` : visBadge(t, false)}</span></span>
+    <span class="tn">${t.hasRoute ? `<b class="num">${fmtKm(t.distanceKm)}</b><small>km</small>` : '<small>ルートなし</small>'}<small>${t.spotCount}か所</small>
+      <small style="margin-top:3px">♥ ${t.likeCount || 0}　💬 ${t.commentCount || 0}</small></span>
+  </button>`;
+}
 function listHtml() {
+  const pub = S.listTab === 'public';
+  const tabs = `<div class="tabs" role="tablist">
+    <button class="tab ${pub ? '' : 'on'}" role="tab" aria-selected="${!pub}" data-act="listTab" data-tab="mine">自分のトリップ</button>
+    <button class="tab ${pub ? 'on' : ''}" role="tab" aria-selected="${pub}" data-act="listTab" data-tab="public">みんなの公開ルート</button></div>`;
+  const list = pub ? S.publicTrips : S.trips;
   let content;
-  if (S.loading && !S.trips.length) content = '<p class="muted">読み込み中…</p>';
-  else if (!S.trips.length) content = `<div class="empty"><p class="font-bold">まだトリップがありません</p>
-      <p class="text-sm mt-1">走行ログ（GPX・KML・GeoJSON）を読み込むところから始めましょう。ログがなくても、写真やピンだけで記録できます。</p>
+  if (S.loading && !list.length) content = '<p class="muted">読み込み中…</p>';
+  else if (pub && !list.length) content = `<div class="empty"><p class="font-bold">公開されたルートはまだありません</p>
+      <p class="text-sm mt-1">自分のトリップの公開範囲を「会員に公開」にすると、ここに並びます。</p></div>`;
+  else if (!list.length) content = `<div class="empty"><p class="font-bold">まだトリップがありません</p>
+      <p class="text-sm mt-1">走行ログ（GPX・KML・GeoJSON）や、アクティビティマップの画像から始められます。写真やピンだけでも記録できます。</p>
       <button class="btn btn-route btn-sm mt-3" data-act="newTrip">＋ 新しいトリップ</button></div>`;
-  else content = `<div class="trips">${S.trips.map(t => `
-      <button class="trip" data-act="openTrip" data-id="${esc(t.tripId)}">
-        <span class="ti" aria-hidden="true">${TYPE_ICON[t.tripType] || '🧭'}</span>
-        <span class="tb"><span class="tt">${esc(t.title)}</span><span class="tm">${esc(fmtDate(t.startDate)) || '日付なし'}</span></span>
-        <span class="tn">${t.hasRoute ? `<b class="num">${fmtKm(t.distanceKm)}</b><small>km</small>` : '<small>ルートなし</small>'}<small>${t.spotCount}か所</small></span>
-      </button>`).join('')}</div>`;
-  return `<div class="flex items-center justify-between mb-4"><h2 class="h2">トリップ</h2>
-    <button class="btn btn-ghost btn-sm md:hidden" data-act="newTrip">＋ 新規</button></div>${content}`;
+  else content = `<div class="trips">${list.map(t => tripItemHtml(t, pub)).join('')}</div>`;
+  const note = pub ? '<p class="hint mb-3">ログインしている会員が公開したルートです。閲覧のみできます。</p>'
+    : '<div class="flex justify-end mb-3 md:hidden"><button class="btn btn-ghost btn-sm" data-act="newTrip">＋ 新しいトリップ</button></div>';
+  return tabs + note + content;
 }
 
 function tripHtml() {
   const t = S.trip;
   const dates = t.startDate ? fmtDate(t.startDate) + (t.endDate && t.endDate !== t.startDate ? ' 〜 ' + fmtDate(t.endDate) : '') : '日付なし';
-  return `<button class="back" data-act="backList">‹ トリップ一覧</button>
+  const own = canEdit();
+  return `<button class="back" data-act="backList">‹ ${S.listTab === 'public' ? 'みんなの公開ルート' : 'トリップ一覧'}</button>
     <h2 class="ttl">${esc(t.title)}</h2>
     <div class="meta"><span>${TYPE_ICON[t.tripType] || ''} ${TYPE_LABEL[t.tripType] || ''}</span><span>${esc(dates)}</span>${t.routeName ? `<span>${esc(t.routeName)}</span>` : ''}</div>
+    <div class="meta" style="margin-top:8px;align-items:center">${own ? visBadge(t, true) : `<span class="owner">${esc(t.ownerName || '')} さんのトリップ</span><span class="vis pub">👥 会員に公開</span>`}
+      <button class="like ${S.liked ? 'on' : ''}" data-act="like" aria-pressed="${S.liked}" aria-label="いいね"><span class="hrt" aria-hidden="true">${S.liked ? '♥' : '♡'}</span>いいね<b>${S.likeCount}</b></button></div>
     ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ''}
     ${meterHtml()}
     ${profileHtml()}
-    <div class="acts">
+    ${own ? `<div class="acts">
       <button class="btn btn-ghost" data-act="importRoute"><span aria-hidden="true">〰</span><span>${S.route ? 'ルートを置き換え' : 'ルートを読み込む'}</span></button>
       <button class="btn btn-ghost" data-act="addMedia"><span aria-hidden="true">📷</span><span>写真・動画を追加</span></button>
       <button class="btn btn-ghost" data-act="pinMode"><span aria-hidden="true">📍</span><span>ピンを打つ</span></button>
-    </div>
+    </div>` : ''}
     <div class="subacts">
       ${S.route ? `<button class="lnk" data-act="togglePlay">ルートを再生</button><button class="lnk" data-act="exportGpx">GPXで書き出す</button><button class="lnk" data-act="copyShare">共有コードをコピー</button>` : ''}
-      <button class="lnk" data-act="editTrip">トリップを編集</button>
-      <button class="lnk danger" data-act="deleteTrip">削除</button>
+      ${own ? `<button class="lnk" data-act="editTrip">トリップを編集</button><button class="lnk danger" data-act="deleteTrip">削除</button>` : ''}
     </div>
     <div class="tabs mt-5" role="tablist">
       <button class="tab ${S.tab === 'timeline' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'timeline'}" data-act="tab" data-tab="timeline">タイムライン</button>
-      <button class="tab ${S.tab === 'ai' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'ai'}" data-act="tab" data-tab="ai">AIでまとめる</button>
+      <button class="tab ${S.tab === 'ai' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'ai'}" data-act="tab" data-tab="ai">${own ? 'AIでまとめる' : 'まとめ文'}</button>
+      <button class="tab ${S.tab === 'comments' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'comments'}" data-act="tab" data-tab="comments">コメント ${S.comments.length ? `<span class="num">${S.comments.length}</span>` : ''}</button>
     </div>
-    ${S.tab === 'ai' ? aiHtml() : timelineHtml()}`;
+    ${S.tab === 'ai' ? aiHtml() : S.tab === 'comments' ? commentsHtml() : timelineHtml()}`;
 }
 
+function commentsHtml() {
+  const list = S.comments.map(c => {
+    const editing = S.editCmt === c.commentId;
+    return `<li class="cm ${c.isMine ? 'mine' : ''}">
+      <div class="cm-h"><span class="cm-a">${esc(c.authorName)}${c.isMine ? '<small>（自分）</small>' : ''}</span>
+        <span class="cm-t num">${esc(fmtTime(c.createdAt))}${c.edited ? '<span style="font-family:inherit;font-size:11px"> 編集済み</span>' : ''}</span></div>
+      ${editing ? `<form class="cm-edit mt-2" data-id="${esc(c.commentId)}" novalidate>
+          <textarea class="inp" name="body" rows="3" maxlength="1000" required aria-label="コメントを修正">${esc(c.body)}</textarea>
+          <p class="ferr"></p>
+          <div class="flex gap-2 justify-end"><button type="button" class="btn btn-ghost btn-sm" data-act="cmtCancel">やめる</button><button type="submit" class="btn btn-route btn-sm">保存する</button></div>
+        </form>`
+      : `<p class="cm-b">${esc(c.body)}</p>
+        ${c.isMine || c.canDelete ? `<div class="cm-x">${c.isMine ? `<button class="lnk" data-act="cmtEdit" data-id="${esc(c.commentId)}">修正</button>` : ''}${c.canDelete ? `<button class="lnk danger" data-act="cmtDel" data-id="${esc(c.commentId)}">削除</button>` : ''}</div>` : ''}`}
+    </li>`;
+  }).join('');
+  return `${S.comments.length ? `<ul class="cms">${list}</ul>` : '<p class="muted text-sm">まだコメントはありません。</p>'}
+    <form id="fCmt" class="cm-form" novalidate>
+      <label for="f_cmt" class="text-sm font-bold">コメントを書く</label>
+      <textarea id="f_cmt" class="inp mt-2" name="body" rows="3" maxlength="1000" required placeholder="感想や、走ってみたい・行ってみたい気持ちを伝えましょう">${esc(S.cmtDraft)}</textarea>
+      <p class="ferr"></p>
+      <div class="flex justify-between items-center"><span class="hint" style="margin:0">1000文字まで</span><button type="submit" class="btn btn-route btn-sm">投稿する</button></div>
+    </form>`;
+}
+function bumpCounts() {
+  const id = S.trip.tripId;
+  S.trip.likeCount = S.likeCount;
+  S.trip.commentCount = S.comments.length;
+  [S.trips, S.publicTrips].forEach(list => list.forEach(t => {
+    if (t.tripId === id) { t.likeCount = S.likeCount; t.commentCount = S.comments.length; }
+  }));
+}
+function bindComments() {
+  const f = $('#fCmt');
+  if (!f) return;
+  f.elements.body.addEventListener('input', e => { S.cmtDraft = e.target.value; });
+  bindForm(f, async d => {
+    if (!d.body.trim()) throw new Error('コメントを入力してください');
+    const r = await api('addComment', { tripId: S.trip.tripId, body: d.body });
+    S.comments.push(r.comment);
+    S.cmtDraft = '';
+    bumpCounts(); renderPanel();
+    const list = $$('#panelBody .cm'); if (list.length) list[list.length - 1].scrollIntoView({ block: 'nearest' });
+    toast('コメントを投稿しました');
+  });
+  $$('#panelBody form.cm-edit').forEach(ef => {
+    bindForm(ef, async d => {
+      if (!d.body.trim()) throw new Error('コメントを入力してください');
+      const r = await api('updateComment', { commentId: ef.dataset.id, body: d.body });
+      const i = S.comments.findIndex(c => c.commentId === ef.dataset.id);
+      if (i >= 0) S.comments[i] = r.comment;
+      S.editCmt = null; renderPanel(); toast('コメントを修正しました');
+    });
+    const ta = ef.querySelector('textarea');
+    if (ta && !isMobile()) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  });
+}
+async function deleteComment(id) {
+  const c = S.comments.find(x => x.commentId === id);
+  if (!c) return;
+  const who = c.isMine ? '' : `（${c.authorName} さんのコメント）`;
+  if (!confirm(`このコメントを削除しますか？${who}\n削除すると元に戻せません。`)) return;
+  try {
+    await api('deleteComment', { commentId: id });
+    S.comments = S.comments.filter(x => x.commentId !== id);
+    bumpCounts(); renderPanel(); toast('コメントを削除しました');
+  } catch (e) { toast(e.message, 'err'); }
+}
+let likeBusy = false;
+async function toggleLike() {
+  if (likeBusy || !S.trip) return;
+  likeBusy = true;
+  const prev = { liked: S.liked, count: S.likeCount };
+  S.liked = !S.liked; S.likeCount += S.liked ? 1 : -1; // 先に表示を切り替える
+  bumpCounts(); renderPanel();
+  try {
+    const id = S.trip.tripId;
+    const r = await api('toggleLike', { tripId: id });
+    if (S.trip && S.trip.tripId === id) { S.liked = r.liked; S.likeCount = r.likeCount; }
+  } catch (e) {
+    S.liked = prev.liked; S.likeCount = prev.count;
+    toast(e.message, 'err');
+  }
+  likeBusy = false;
+  if (S.trip) { bumpCounts(); renderPanel(); }
+}
 function thumbBtn(s, m, j) {
   return `<button class="thumb" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="${j}" aria-label="${isVideo(m) ? '動画' : '写真'}を開く">
     <img src="${esc(thumbUrl(m.fileId, 240))}" alt="" loading="lazy" onerror="this.remove()">${isVideo(m) ? '<span class="vid">▶</span>' : ''}</button>`;
 }
 function timelineHtml() {
   const sp = sortedSpots();
+  if (!sp.length && !canEdit()) return '<div class="empty"><p>立ち寄りスポットは登録されていません。</p></div>';
   if (!sp.length) return `<div class="empty"><p class="font-bold">まだスポットがありません</p>
     <p class="text-sm mt-1">「写真・動画を追加」を使うと、撮影地点に自動でピンが立ちます。位置情報のない写真や、メモだけ残したい場所は「ピンを打つ」から追加できます。</p></div>`;
   return `<ol class="tl">${sp.map((s, i) => {
@@ -846,7 +977,7 @@ function timelineHtml() {
       <button class="tl-head" data-act="focusSpot" data-id="${esc(s.spotId)}"><span class="tl-title">${esc(s.title || '名称未設定のスポット')}</span><span class="tl-time">${esc(fmtTime(s.takenAt))}</span></button>
       ${s.memo ? `<p class="tl-memo">${esc(s.memo)}</p>` : ''}
       ${media.length ? `<div class="thumbs">${media.slice(0, 6).map((m, j) => thumbBtn(s, m, j)).join('')}${media.length > 6 ? `<button class="thumb" data-act="viewSpot" data-id="${esc(s.spotId)}" data-i="6">+${media.length - 6}</button>` : ''}</div>` : ''}
-      <div class="tl-actions"><button class="lnk" data-act="focusSpot" data-id="${esc(s.spotId)}">地図で見る</button><button class="lnk" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button></div>
+      <div class="tl-actions"><button class="lnk" data-act="focusSpot" data-id="${esc(s.spotId)}">地図で見る</button>${canEdit() ? `<button class="lnk" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}</div>
     </div></li>`;
   }).join('')}</ol>`;
 }
@@ -857,6 +988,13 @@ function aiHtml() {
     ['highlights', 'aiHighlights', 'ルートの見どころ', 'ルートの特徴とスポットごとの解説、走る人へのアドバイス'],
     ['sns', 'aiSns', 'SNS・ブログ用の投稿文', '140字前後の投稿文とハッシュタグ、ブログの導入文']
   ];
+  if (!canEdit()) {
+    const has = blocks.filter(b => t[b[1]]);
+    if (!has.length) return '<div class="empty"><p>まとめ文はまだありません。</p></div>';
+    return has.map(([mode, f, title]) => `<section class="ai"><h4>${title}</h4>
+      <textarea id="ai_${mode}" class="inp ai-out" rows="8" readonly>${esc(t[f])}</textarea>
+      <div class="text-right"><button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div></section>`).join('');
+  }
   return `<label class="chk"><input type="checkbox" id="aiPhotos" ${S.aiPhotos ? 'checked' : ''}> 写真に写っているものも読み取る（最大6枚）</label>
     ${!S.spots.length && !t.hasRoute ? '<p class="note" style="margin:0 0 12px">ルートやスポットを登録すると、その内容に沿った文章になります。</p>' : ''}
     ${blocks.map(([mode, f, title, desc]) => `<section class="ai">
@@ -986,6 +1124,7 @@ function afterLogin(r, msg) {
 }
 function logout(expired, msg) {
   S.token = null; S.user = null; S.trips = []; S.trip = null; S.spots = []; S.tempPw = '';
+  S.publicTrips = []; S.publicLoaded = false; S.listTab = 'mine';
   ls.del('wadachi.token'); ls.del('wadachi.user');
   endPick();
   setRoute(null); drawSpots();
@@ -1033,12 +1172,35 @@ async function loadTrips() {
   catch (e) { if (e.code !== 'AUTH') toast(e.message, 'err'); }
   finally { S.loading = false; if (!S.trip) renderPanel(); }
 }
+async function loadPublic() {
+  S.loading = true; renderPanel();
+  try { const r = await api('listPublicTrips'); S.publicTrips = r.trips; S.publicLoaded = true; }
+  catch (e) { if (e.code !== 'AUTH') toast(e.message, 'err'); }
+  finally { S.loading = false; if (!S.trip) renderPanel(); }
+}
+async function toggleVisibility() {
+  const t = S.trip;
+  const next = t.visibility === 'members' ? 'private' : 'members';
+  const msg = next === 'members'
+    ? 'このトリップを会員に公開します。ルート・スポット・写真・動画・メモ・まとめ文が、ログインしている会員に見えるようになります。よろしいですか？'
+    : 'このトリップを非公開（自分だけ）に戻しますか？';
+  if (!confirm(msg)) return;
+  try {
+    const r = await api('saveTrip', { trip: { tripId: t.tripId, title: t.title, tripType: t.tripType, startDate: t.startDate, endDate: t.endDate, description: t.description, visibility: next }, spotCount: S.spots.length });
+    S.trip = { ...S.trip, ...r.trip };
+    syncTripInList(S.trip);
+    S.publicLoaded = false;
+    renderPanel();
+    toast(next === 'members' ? '会員に公開しました' : '非公開にしました');
+  } catch (e) { toast(e.message, 'err'); }
+}
 async function openTrip(id) {
   endPick();
   $('#panelBody').innerHTML = '<p class="muted">トリップを開いています…</p>';
   try {
     const r = await api('getTrip', { tripId: id });
     S.trip = r.trip; S.spots = r.spots || []; S.tab = 'timeline';
+    S.comments = r.comments || []; S.liked = !!r.liked; S.likeCount = r.likeCount || 0; S.editCmt = null; S.cmtDraft = '';
     setRoute(r.route && r.route.points && r.route.points.length > 1 ? normalizeRoute(r.route) : null);
     drawSpots(); fitAll(); renderPanel(); setSheet('half');
     history.replaceState(null, '', '?trip=' + encodeURIComponent(id));
@@ -1050,6 +1212,7 @@ async function openTrip(id) {
 function closeTrip() {
   endPick();
   S.trip = null; S.spots = [];
+  S.comments = []; S.liked = false; S.likeCount = 0; S.editCmt = null; S.cmtDraft = '';
   setRoute(null); drawSpots(); renderPanel();
   history.replaceState(null, '', location.pathname);
 }
@@ -1074,6 +1237,10 @@ function openTripForm(trip, pendingRoute) {
         <div class="field"><label for="f_sd">出発日</label><input class="inp" id="f_sd" type="date" name="startDate" value="${esc(defStart)}"></div>
         <div class="field"><label for="f_ed">帰着日</label><input class="inp" id="f_ed" type="date" name="endDate" value="${esc(t.endDate || '')}"></div>
       </div>
+      <div class="field"><span class="lbl">公開範囲</span><div class="seg">
+        <label><input type="radio" name="visibility" value="private" ${t.visibility === 'members' ? '' : 'checked'}>🔒 非公開（自分だけ）</label>
+        <label><input type="radio" name="visibility" value="members" ${t.visibility === 'members' ? 'checked' : ''}>👥 会員に公開</label>
+      </div><p class="hint">会員に公開すると、ログインした会員がルート・スポット・写真・動画・メモ・まとめ文を見られます（編集はできません）。</p></div>
       <div class="field"><label for="f_desc">メモ</label><textarea class="inp" id="f_desc" name="description" rows="3" maxlength="2000" placeholder="一緒に行った人、天気、車体のことなど">${esc(t.description || '')}</textarea></div>
       ${isNew ? `<div class="field"><span class="lbl">ルート（あとからでも追加できます）</span>
         <label class="drop small" data-drop="trip"><span id="tripRouteLbl">${pr ? '読み込み済み：' + esc(pr.name || 'ルート') + '（' + fmtKm(computeStats(pr.points).distanceKm) + ' km）' : 'GPX・KML・GeoJSON をドロップ、またはタップして選ぶ'}</span>
@@ -1083,7 +1250,7 @@ function openTripForm(trip, pendingRoute) {
   const rf = $('#tripRouteFile');
   if (rf) rf.addEventListener('change', () => { if (rf.files[0]) setTripFormRoute(rf.files[0]); });
   bindForm($('#fTrip'), async d => {
-    const r = await api('saveTrip', { trip: { tripId: t.tripId || '', title: d.title, tripType: d.tripType, startDate: d.startDate, endDate: d.endDate, description: d.description }, spotCount: S.spots.length });
+    const r = await api('saveTrip', { trip: { tripId: t.tripId || '', title: d.title, tripType: d.tripType, startDate: d.startDate, endDate: d.endDate, description: d.description, visibility: d.visibility }, spotCount: isNew ? 0 : S.spots.length });
     let trip = r.trip;
     if (isNew && S.pendingRoute) {
       const p = S.pendingRoute, st = computeStats(p.points);
@@ -1092,8 +1259,9 @@ function openTripForm(trip, pendingRoute) {
     }
     S.pendingRoute = null;
     syncTripInList(trip);
+    S.publicLoaded = false;
     closeModal();
-    if (isNew) { await openTrip(trip.tripId); toast('トリップを作成しました'); }
+    if (isNew) { S.listTab = 'mine'; await openTrip(trip.tripId); toast('トリップを作成しました'); }
     else { S.trip = { ...S.trip, ...trip }; renderPanel(); toast('保存しました'); }
   });
 }
@@ -1121,6 +1289,7 @@ async function deleteTrip() {
 /* ---------- route import ---------- */
 async function importRoute(raw) {
   const r = normalizeRoute(raw);
+  if (S.trip && !canEdit()) { toast('他の会員のトリップには読み込めません。一覧に戻ってから読み込んでください', 'err'); return; }
   if (S.user && !S.trip) { openTripForm(null, r); return; }
   if (S.user && S.trip) {
     if (S.route && !confirm('今のルートを新しいものに置き換えますか？')) return;
@@ -1380,6 +1549,7 @@ async function readExif(f) {
 function requireTrip() {
   if (!S.user) { toast('保存にはログインが必要です', 'err'); openAuth('login'); return false; }
   if (!S.trip) { toast('先にトリップを開くか、新しく作ってください', 'err'); return false; }
+  if (!canEdit()) { toast('他の会員のトリップには追加できません', 'err'); return false; }
   return true;
 }
 function upsertSpot(s) {
@@ -1545,7 +1715,7 @@ function renderViewer() {
     ${s.takenAt ? `<p class="muted text-sm mt-3 num" style="font-size:16px">${esc(fmtTime(s.takenAt))}</p>` : ''}
     ${s.memo ? `<p class="vmemo">${esc(s.memo)}</p>` : (m ? '' : '<p class="muted">写真やメモはまだありません。</p>')}
     <div class="flex flex-wrap gap-2 mt-4">
-      ${S.trip ? `<button class="btn btn-ghost btn-sm" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}
+      ${canEdit() ? `<button class="btn btn-ghost btn-sm" data-act="editSpot" data-id="${esc(s.spotId)}">編集</button>` : ''}
       ${m ? `<a class="btn btn-ghost btn-sm" href="${esc(viewUrl(m.fileId))}" target="_blank" rel="noopener">Googleドライブで開く</a>` : ''}
     </div>`, { wide: true });
 }
@@ -1591,15 +1761,24 @@ const ACT = {
   sheet: () => {},
   newTrip: () => { if (!S.user) return openAuth('register'); openTripForm(null, null); },
   openTrip: el => openTrip(el.dataset.id),
-  backList: () => { closeTrip(); loadTrips(); },
+  backList: () => { closeTrip(); if (S.listTab === 'public') loadPublic(); else loadTrips(); },
+  listTab: el => {
+    S.listTab = el.dataset.tab;
+    if (S.listTab === 'public' && !S.publicLoaded) loadPublic(); else renderPanel();
+  },
+  toggleVis: () => { if (canEdit()) toggleVisibility(); },
+  like: () => toggleLike(),
+  cmtEdit: el => { S.editCmt = el.dataset.id; renderPanel(); },
+  cmtCancel: () => { S.editCmt = null; renderPanel(); },
+  cmtDel: el => deleteComment(el.dataset.id),
   editTrip: () => openTripForm(S.trip),
   deleteTrip: () => deleteTrip(),
-  importRoute: () => openImport(),
+  importRoute: () => { if (canEdit()) openImport(); },
   pickRoute: () => $('#fileRoute').click(),
   addMedia: () => { if (requireTrip()) $('#filePhotos').click(); },
   pinMode: () => { if (requireTrip()) startPick('ピンを置く場所を地図でタップ', ll => openSpotEditor({ lat: ll.lat, lng: ll.lng, source: 'map', takenAt: '' })); },
   cancelPick: () => endPick(),
-  tab: el => { S.tab = el.dataset.tab; renderPanel(); },
+  tab: el => { S.tab = el.dataset.tab; S.editCmt = null; renderPanel(); },
   focusSpot: el => {
     const s = S.spots.find(x => x.spotId === el.dataset.id);
     if (!s) return;
@@ -1610,7 +1789,7 @@ const ACT = {
   viewSpot: el => { map.closePopup(); openViewer(el.dataset.id, Number(el.dataset.i) || 0); },
   editSpot: el => {
     const s = S.spots.find(x => x.spotId === el.dataset.id);
-    if (!s || !S.trip) return;
+    if (!s || !canEdit()) return;
     map.closePopup();
     openSpotEditor(JSON.parse(JSON.stringify(s)));
   },
