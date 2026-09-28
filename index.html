@@ -290,7 +290,7 @@
 /* ============================================================
  * 設定：GASウェブアプリのURLを貼り付けてください
  * ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/execAS_WEB_APP_URL_HERE';
 const MAX_VIDEO_MB = 28;
 
 const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
@@ -312,7 +312,8 @@ const S = {
   trip: null, spots: [],
   route: null, stats: null,
   tab: 'timeline', aiPhotos: true,
-  pick: null, editor: null, viewer: null, pendingRoute: null
+  pick: null, editor: null, viewer: null, pendingRoute: null,
+  lastEmail: '', tempPw: ''
 };
 
 /* ---------- helpers ---------- */
@@ -889,9 +890,9 @@ function bindForm(form, fn) {
 }
 const EYE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.9 17.9A10.1 10.1 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 4.2A9.6 9.6 0 0 1 12 4c7 0 11 8 11 8a18.6 18.6 0 0 1-2.2 3.2M1 1l22 22"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/></svg>';
-function pwField(name, label, ac, hint = '') {
+function pwField(name, label, ac, hint = '', value = '') {
   return `<div class="field"><label for="f_${name}">${label}</label><div class="pw">
-    <input class="inp" id="f_${name}" type="password" name="${name}" autocomplete="${ac}" required>
+    <input class="inp" id="f_${name}" type="password" name="${name}" autocomplete="${ac}" required value="${esc(value)}">
     <button type="button" class="eye" data-act="eye" aria-label="パスワードを表示">${EYE}</button></div>
     ${hint ? `<p class="hint">${hint}</p>` : ''}</div>`;
 }
@@ -912,32 +913,42 @@ function renderAuthBody(tab) {
   const el = $('#authBody');
   if (tab === 'login') {
     el.innerHTML = `<form id="fLogin" novalidate>
-      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
-      ${pwField('password', 'パスワード', 'current-password')}
-      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">ログイン</button></form>`;
+      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required value="${esc(S.lastEmail)}"></div>
+      ${pwField('password', S.lastEmail ? 'パスワード（はじめての方はメールの仮パスワード）' : 'パスワード', 'current-password')}
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">ログイン</button>
+      <p class="hint text-center mt-3">はじめての方は「新規登録」から。仮パスワードをメールでお送りします</p></form>`;
+    if (S.lastEmail && !isMobile()) setTimeout(() => { const pw = $('#f_password'); if (pw) pw.focus(); }, 40);
     bindForm($('#fLogin'), async d => {
       const r = await api('login', { email: d.email, password: d.password });
+      S.tempPw = r.user.mustChangePassword ? d.password : '';
       afterLogin(r, 'おかえりなさい、' + r.user.displayName + ' さん');
     });
   } else if (tab === 'register') {
     el.innerHTML = `<form id="fReg" novalidate>
-      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
+      <ol class="text-sm mb-4" style="line-height:1.8;list-style:decimal;padding-left:1.4em">
+        <li>メールアドレスと表示名を登録</li>
+        <li>届いた仮パスワードでログイン</li>
+        <li>新しいパスワードを設定して完了</li>
+      </ol>
+      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required value="${esc(S.lastEmail)}"></div>
       <div class="field"><label for="f_name">表示名</label><input class="inp" id="f_name" name="displayName" maxlength="30" autocomplete="nickname" required><p class="hint">30文字まで。あとから変更できます</p></div>
-      ${pwField('password', 'パスワード', 'new-password', PW_HINT)}
-      ${pwField('password2', 'パスワード（確認）', 'new-password')}
-      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">登録する</button></form>`;
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">仮パスワードを受け取る</button></form>`;
     bindForm($('#fReg'), async d => {
-      if (d.password !== d.password2) throw new Error('確認用のパスワードが一致しません');
-      const r = await api('register', { email: d.email, displayName: d.displayName, password: d.password });
-      afterLogin(r, '登録しました。最初のトリップを作りましょう');
+      const r = await api('register', { email: d.email, displayName: d.displayName });
+      S.lastEmail = r.email || d.email.trim().toLowerCase();
+      $('#authBody').innerHTML = `<p style="line-height:1.8">${esc(r.message)}</p>
+        <p class="hint mt-2">数分たっても届かない場合は、迷惑メールフォルダを確認してください。</p>
+        <button class="btn btn-route w-full mt-4" data-act="authTab" data-tab="login">仮パスワードでログイン</button>`;
     });
   } else {
     el.innerHTML = `<form id="fForgot" novalidate>
       <p class="text-sm mb-4" style="line-height:1.7">登録したメールアドレスに仮パスワードを送ります。仮パスワードでログインしたあと、新しいパスワードを設定してください。</p>
       <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
+      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required value="${esc(S.lastEmail)}"></div>
       <p class="ferr"></p><button type="submit" class="btn btn-route w-full">仮パスワードを送る</button></form>`;
     bindForm($('#fForgot'), async d => {
       const r = await api('forgotPassword', { email: d.email });
+      S.lastEmail = d.email.trim().toLowerCase();
       $('#authBody').innerHTML = `<p style="line-height:1.8">${esc(r.message)}</p><p class="hint mt-2">届かない場合は迷惑メールフォルダも確認してください。</p>
         <button class="btn btn-route w-full mt-4" data-act="authTab" data-tab="login">ログインへ</button>`;
     });
@@ -957,7 +968,7 @@ function afterLogin(r, msg) {
   else toast(msg);
 }
 function logout(expired, msg) {
-  S.token = null; S.user = null; S.trips = []; S.trip = null; S.spots = [];
+  S.token = null; S.user = null; S.trips = []; S.trip = null; S.spots = []; S.tempPw = '';
   ls.del('wadachi.token'); ls.del('wadachi.user');
   endPick();
   setRoute(null); drawSpots();
@@ -969,9 +980,9 @@ function logout(expired, msg) {
 }
 function openChangePw(forced) {
   openModal(`<div class="mhead"><h3>${forced ? '新しいパスワードを設定' : 'パスワードを変更'}</h3>${forced ? '' : X_BTN}</div>
-    ${forced ? '<p class="text-sm mb-4" style="line-height:1.7">仮パスワードでログインしました。続けて使うには、新しいパスワードを設定してください。</p>' : ''}
+    ${forced ? '<p class="text-sm mb-4" style="line-height:1.7">仮パスワードでログインしました。続けて使うには、ご自身で決めた新しいパスワードを設定してください。</p>' : ''}
     <form id="fPw" novalidate>
-      ${pwField('currentPassword', forced ? 'メールで届いた仮パスワード' : '現在のパスワード', 'current-password')}
+      ${pwField('currentPassword', forced ? 'メールで届いた仮パスワード' : '現在のパスワード', 'current-password', '', forced ? S.tempPw : '')}
       ${pwField('newPassword', '新しいパスワード', 'new-password', PW_HINT)}
       ${pwField('newPassword2', '新しいパスワード（確認）', 'new-password')}
       <p class="ferr"></p><button type="submit" class="btn btn-route w-full">パスワードを変更</button>
@@ -981,9 +992,10 @@ function openChangePw(forced) {
     if (d.newPassword !== d.newPassword2) throw new Error('確認用のパスワードが一致しません');
     const r = await api('changePassword', { currentPassword: d.currentPassword, newPassword: d.newPassword });
     setSession(r.token, r.user);
+    S.tempPw = '';
     closeModal(true);
     renderHeader();
-    toast('パスワードを変更しました');
+    toast(forced ? 'パスワードを設定しました。最初のトリップを作りましょう' : 'パスワードを変更しました');
   });
 }
 function openEditName() {
