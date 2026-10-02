@@ -212,6 +212,33 @@
   #playbar select { border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 13px; background: #fff; }
   #pbBtn { width: 38px; height: 38px; border-radius: 50%; background: var(--route); color: #fff; font-size: 14px; flex: none; }
   #pbInfo { font-size: 17px; min-width: 88px; text-align: right; white-space: nowrap; }
+  #playbar { flex-wrap: wrap; row-gap: 8px; }
+  .pb-row2 { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; min-height: 34px; }
+  .pb-near { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+  .pb-near img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; background: var(--mist); }
+  .pb-near .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pb-add { flex: none; }
+  .pb-opt { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; flex: none; color: var(--muted); }
+  .pb-opt input { width: 16px; height: 16px; accent-color: var(--route); }
+  #pbPhoto { position: absolute; z-index: 820; left: 16px; top: 16px; width: 380px; max-width: calc(100% - 32px); background: #fff; border-radius: 16px; overflow: hidden;
+    box-shadow: 0 14px 40px rgba(20,30,27,.35); animation: pbIn .25s ease; }
+  @keyframes pbIn { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { #pbPhoto { animation: none; } }
+  .pp-stage { position: relative; background: #111A17; aspect-ratio: 4 / 3; display: grid; place-items: center; cursor: zoom-in; }
+  .pp-stage img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .pp-stage .play { position: absolute; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.9); color: var(--route); display: grid; place-items: center; font-size: 22px; }
+  .pp-stage .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.88); border: 0; font-size: 22px; line-height: 1; color: var(--ink); }
+  .pp-stage .prev { left: 8px; } .pp-stage .next { right: 8px; }
+  .pp-stage .cnt { position: absolute; right: 8px; bottom: 6px; color: #fff; background: rgba(0,0,0,.5); border-radius: 6px; padding: 0 7px; font-size: 14px; }
+  .pp-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--route); width: 0; }
+  .pp-bar.go { transition: width linear; width: 100%; }
+  .pp-body { padding: 10px 12px 12px; }
+  .pp-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .pp-t { font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .pp-d { font-size: 13px; color: var(--muted); }
+  .pp-m { font-size: 13px; line-height: 1.6; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+  .pp-a { display: flex; gap: 12px; margin-top: 6px; }
+  @media (max-width: 767px) { #pbPhoto { top: 132px; left: 12px; width: auto; right: 12px; max-width: none; } .pp-stage { aspect-ratio: 16 / 10; } }
   .pb-x { background: none; border: 0; font-size: 20px; color: var(--muted); width: 28px; }
   @media (max-width: 767px) {
     #playbar { top: 10px; bottom: auto; }
@@ -315,7 +342,13 @@
       </select>
       <span id="pbInfo" class="num">0.0 km</span>
       <button class="pb-x" data-act="togglePlay" aria-label="再生バーを閉じる">×</button>
+      <div class="pb-row2">
+        <div id="pbNear" class="pb-near"><span class="muted">再生を止めた地点に写真・動画を登録できます</span></div>
+        <label class="pb-opt" title="写真のある地点で再生を止めて写真を見せます"><input type="checkbox" id="pbStop" checked>写真で停止</label>
+        <button id="pbAdd" class="btn btn-route btn-sm pb-add" data-act="pbAdd">📷 この地点に追加</button>
+      </div>
     </div>
+    <div id="pbPhoto" class="hidden" role="dialog" aria-label="スポットの写真"></div>
     <div id="dropOverlay" class="hidden">ここに離すと読み込みます<br><span class="text-sm font-normal">ルート：GPX・KML・GeoJSON ／ 写真・動画</span></div>
   </section>
 </main>
@@ -607,6 +640,7 @@ function drawSpots() {
     mk.bindPopup(() => popupHtml(s, i), { maxWidth: 280, minWidth: 200 });
     mk._spotId = s.spotId;
   });
+  if (typeof pbRefresh === 'function') pbRefresh();
 }
 function popupHtml(s, i) {
   const m = s.media || [];
@@ -686,7 +720,9 @@ function bindProfile() {
 }
 
 /* ---------- playback ---------- */
-const PB = { on: false, playing: false, frac: 0, last: 0, raf: 0, marker: null };
+const PB = { on: false, playing: false, frac: 0, last: 0, raf: 0, marker: null, nearId: null, hold: false, shown: new Set(), card: null, cardT: 0 };
+const PP_SEC = { photo: 3, video: 3.5 }; // 1枚あたりの表示秒数
+const NEAR_M = 250; // この距離以内のスポットを「近くのスポット」として表示
 function showPlaybar(show) {
   if (show && !S.route) { toast('先にルートを読み込んでください'); return; }
   PB.on = show;
@@ -694,9 +730,13 @@ function showPlaybar(show) {
   if (show) {
     if (!PB.marker) PB.marker = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="pb-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 1000 });
     PB.marker.addTo(map);
+    $('#pbAdd').classList.toggle('hidden', !canEdit());
+    PB.nearId = undefined;
     pbSet(PB.frac);
   } else {
     pbPause();
+    pbHideCard();
+    PB.shown.clear();
     if (PB.marker) PB.marker.remove();
   }
 }
@@ -708,11 +748,91 @@ function pbSet(f) {
   let info = (p.dist / 1000).toFixed(1) + ' km';
   if (p.time) { const d = new Date(p.time); info += ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
   $('#pbInfo').textContent = info;
+  pbUpdateNear(p);
 }
+function pbUpdateNear(p) {
+  let best = null, bestD = Infinity;
+  S.spots.forEach(s => { const d = hav([p.lat, p.lng], [s.lat, s.lng]); if (d < bestD) { bestD = d; best = s; } });
+  const near = best && bestD <= NEAR_M ? best : null;
+  const id = near ? near.spotId : null;
+  if (id === PB.nearId) return;
+  PB.nearId = id;
+  const box = $('#pbNear');
+  if (!near) {
+    box.innerHTML = canEdit()
+      ? '<span class="muted">止めた地点に写真・動画・メモを登録できます</span>'
+      : '<span class="muted">近くにスポットはありません</span>';
+    return;
+  }
+  const no = sortedSpots().findIndex(s => s.spotId === id) + 1;
+  const img = (near.media || []).find(m => !isVideo(m)) || (near.media || [])[0];
+  box.innerHTML = `${img ? `<img src="${esc(thumbUrl(img.fileId, 120))}" alt="" onerror="this.remove()">` : ''}
+    <span class="nm">${no}. ${esc(near.title || '名称未設定のスポット')}</span>
+    <button class="lnk" data-act="pbView" data-id="${esc(id)}">見る</button>
+    ${canEdit() ? `<button class="lnk" data-act="pbEdit" data-id="${esc(id)}">編集・削除</button>` : ''}`;
+  // 再生中に写真のあるスポットへ差しかかったら写真を表示
+  if (PB.playing && (near.media || []).length && !PB.shown.has(id)) pbShowPhotos(near);
+}
+
+/* ---------- 再生中の写真ポップアップ ---------- */
+function pbShowPhotos(s) {
+  PB.shown.add(s.spotId);
+  PB.card = { s, i: 0 };
+  PB.hold = !!$('#pbStop').checked;
+  renderPbCard(true);
+}
+function renderPbCard(auto) {
+  const c = PB.card;
+  if (!c) return;
+  const s = c.s, media = s.media || [], m = media[c.i], n = media.length;
+  const no = sortedSpots().findIndex(x => x.spotId === s.spotId) + 1;
+  const box = $('#pbPhoto');
+  box.innerHTML = `<div class="pp-stage" data-act="ppOpen" title="大きく見る">
+      <img src="${esc(thumbUrl(m.fileId, 1000))}" alt="${esc(s.title || '写真')}" onerror="this.style.visibility='hidden'">
+      ${isVideo(m) ? '<span class="play" aria-hidden="true">▶</span>' : ''}
+      ${n > 1 ? `<button class="nav prev" data-act="ppNav" data-d="-1" aria-label="前の写真">‹</button><button class="nav next" data-act="ppNav" data-d="1" aria-label="次の写真">›</button><span class="cnt num">${c.i + 1} / ${n}</span>` : ''}
+      <span class="pp-bar" id="ppBar"></span>
+    </div>
+    <div class="pp-body">
+      <div class="pp-h"><div><p class="pp-t">${no}. ${esc(s.title || '名称未設定のスポット')}</p>${s.takenAt ? `<p class="pp-d num">${esc(fmtTime(s.takenAt))}</p>` : ''}</div>
+        <button class="x" data-act="ppClose" aria-label="閉じて再生を続ける" style="width:30px;height:30px;font-size:20px">×</button></div>
+      ${s.memo ? `<p class="pp-m">${esc(s.memo)}</p>` : ''}
+      <div class="pp-a"><button class="lnk" data-act="ppOpen">大きく見る</button>${canEdit() ? `<button class="lnk" data-act="pbEdit" data-id="${esc(s.spotId)}">編集・削除</button>` : ''}</div>
+    </div>`;
+  box.classList.remove('hidden');
+  // 次の写真を先読み
+  if (media[c.i + 1]) { const im = new Image(); im.src = thumbUrl(media[c.i + 1].fileId, 1000); }
+  clearTimeout(PB.cardT);
+  if (auto && PB.playing) {
+    const sec = isVideo(m) ? PP_SEC.video : PP_SEC.photo;
+    pbCardBar(true, sec);
+    PB.cardT = setTimeout(() => {
+      if (!PB.card || PB.card.s !== s) return;
+      if (c.i < n - 1) { c.i++; renderPbCard(true); }
+      else pbHideCard();
+    }, sec * 1000);
+  }
+}
+function pbCardBar(on, sec) {
+  const bar = $('#ppBar');
+  if (!bar) return;
+  if (!on) { bar.classList.remove('go'); bar.style.transitionDuration = '0s'; return; }
+  bar.style.transitionDuration = sec + 's';
+  requestAnimationFrame(() => requestAnimationFrame(() => bar.classList.add('go')));
+}
+function pbHideCard() {
+  clearTimeout(PB.cardT);
+  PB.card = null;
+  PB.hold = false;
+  const box = $('#pbPhoto');
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+}
+function pbRefresh() { if (PB.on && S.route) { PB.nearId = undefined; pbSet(PB.frac); } }
 function pbTick(ts) {
   if (!PB.playing) return;
   const dt = PB.last ? (ts - PB.last) / 1000 : 0;
   PB.last = ts;
+  if (PB.hold) { PB.raf = requestAnimationFrame(pbTick); return; } // 写真表示中は進めない
   const f = PB.frac + dt / Number($('#pbSpeed').value);
   if (f >= 1) { pbSet(1); pbPause(); return; }
   pbSet(f);
@@ -721,14 +841,17 @@ function pbTick(ts) {
 }
 function pbPlay() {
   if (PB.playing) { pbPause(); return; }
-  if (PB.frac >= 1) PB.frac = 0;
-  PB.playing = true; PB.last = 0;
+  if (PB.frac >= 1) { PB.frac = 0; PB.shown.clear(); }
+  if (PB.card) { PB.shown.add(PB.card.s.spotId); pbHideCard(); }
+  PB.playing = true; PB.last = 0; PB.nearId = undefined;
   const b = $('#pbBtn'); b.textContent = '❚❚'; b.setAttribute('aria-label', '一時停止');
   PB.raf = requestAnimationFrame(pbTick);
 }
 function pbPause() {
   PB.playing = false;
+  PB.hold = false;
   cancelAnimationFrame(PB.raf);
+  if (PB.card) { clearTimeout(PB.cardT); pbCardBar(false); } // カードは残し、自動送りだけ止める
   const b = $('#pbBtn'); b.textContent = '▶'; b.setAttribute('aria-label', '再生');
 }
 function pbReset() { PB.frac = 0; if (PB.on) showPlaybar(false); }
@@ -1952,7 +2075,35 @@ const ACT = {
     try { await importRoute({ name: ir.name, points: pts }); } catch (e) { toast(e.message, 'err'); }
   },
   togglePlay: () => showPlaybar(!PB.on),
-  pbPlay: () => pbPlay()
+  pbPlay: () => pbPlay(),
+  pbAdd: () => {
+    if (!requireTrip() || !S.route) return;
+    pbPause();
+    const p = posAtFrac(PB.frac);
+    openSpotEditor({ lat: p.lat, lng: p.lng, source: 'map', takenAt: p.time ? new Date(p.time).toISOString() : '' });
+  },
+  ppNav: (el, e) => {
+    if (e) e.stopPropagation();
+    const c = PB.card; if (!c) return;
+    const n = c.s.media.length;
+    c.i = (c.i + Number(el.dataset.d) + n) % n;
+    renderPbCard(PB.playing); // 再生中なら自動送りを続ける
+  },
+  ppClose: () => { pbHideCard(); },
+  ppOpen: (el, e) => {
+    if (e && e.target.closest('[data-act=ppNav]')) return;
+    const c = PB.card; if (!c) return;
+    pbPause();
+    openViewer(c.s.spotId, c.i);
+  },
+  pbView: el => { pbPause(); map.closePopup(); openViewer(el.dataset.id, 0); },
+  pbEdit: el => {
+    pbPause();
+    const s = S.spots.find(x => x.spotId === el.dataset.id);
+    if (!s || !canEdit()) return;
+    map.closePopup();
+    openSpotEditor(JSON.parse(JSON.stringify(s)));
+  }
 };
 function runAct(el, e) { const fn = ACT[el.dataset.act]; if (fn) fn(el, e); }
 
@@ -1998,7 +2149,7 @@ function bindGlobal() {
   });
   $('#fileRoute').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) handleDroppedFiles([f]); });
   $('#filePhotos').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) addMediaFlow(fs); });
-  $('#pbRange').addEventListener('input', e => { pbPause(); pbSet(Number(e.target.value) / 1000); });
+  $('#pbRange').addEventListener('input', e => { pbPause(); pbHideCard(); PB.shown.clear(); pbSet(Number(e.target.value) / 1000); });
 
   let dragN = 0;
   const ov = $('#dropOverlay');
