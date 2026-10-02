@@ -142,6 +142,16 @@
   .cm-b { font-size: 14px; line-height: 1.75; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
   .cm-x { display: flex; gap: 12px; justify-content: flex-end; }
   .cm-form { margin-top: 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .bk-list { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; margin: 10px 0; padding-right: 2px; }
+  .bk { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; display: grid; grid-template-columns: 24px 1fr; gap: 4px 8px; }
+  .bk.off { opacity: .55; }
+  .bk input[type=checkbox] { width: 18px; height: 18px; margin-top: 8px; accent-color: var(--moss); }
+  .bk-f { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .bk-f .full { grid-column: 1 / -1; }
+  .bk .inp { padding: 7px 9px; font-size: 14px; }
+  .bk-m { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+  .bk-m .st { font-weight: 700; }
+  .bk-m .ok { color: var(--moss); } .bk-m .ng { color: #B3261E; } .bk-m .run { color: var(--route); }
   .owner { font-size: 13px; font-weight: 700; color: var(--moss); }
   .empty { background: #fff; border: 1px dashed #B6C2BB; border-radius: 12px; padding: 18px; line-height: 1.75; }
 
@@ -320,7 +330,7 @@
 /* ============================================================
  * 設定：GASウェブアプリのURLを貼り付けてください
  * ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
+const GAS_URL = 'PASTE_YOUR_GAS_WEB_APP_URL_HERE';
 const MAX_VIDEO_MB = 28;
 
 const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
@@ -346,7 +356,7 @@ const S = {
   tab: 'timeline', aiPhotos: true,
   pick: null, editor: null, viewer: null, pendingRoute: null,
   lastEmail: '', tempPw: '',
-  imgFile: null, imgRoute: null
+  imgFile: null, imgRoute: null, bulk: null
 };
 
 /* ---------- helpers ---------- */
@@ -844,7 +854,7 @@ function listHtml() {
       <button class="btn btn-route btn-sm mt-3" data-act="newTrip">＋ 新しいトリップ</button></div>`;
   else content = `<div class="trips">${list.map(t => tripItemHtml(t, pub)).join('')}</div>`;
   const note = pub ? '<p class="hint mb-3">ログインしている会員が公開したルートです。閲覧のみできます。</p>'
-    : '<div class="flex justify-end mb-3 md:hidden"><button class="btn btn-ghost btn-sm" data-act="newTrip">＋ 新しいトリップ</button></div>';
+    : '<div class="flex justify-end gap-2 mb-3"><button class="btn btn-ghost btn-sm" data-act="bulkImport">📂 GPXをまとめて取り込む</button><button class="btn btn-ghost btn-sm md:hidden" data-act="newTrip">＋ 新規</button></div>';
   return tabs + note + content;
 }
 
@@ -1452,6 +1462,127 @@ function renderImgResult(fit) {
   $$('#modalRoot input[name=imgSnap]').forEach(r => r.addEventListener('change', () => { ir.useSnap = r.value === '1'; renderImgResult(false); }));
   drawImgPreview(fit);
 }
+/* ---------- GPXのまとめて取り込み ----------
+ * ファイル名の規則：「29 3 月 2025多摩川でキャンプ.gpx」
+ *   前部「日 月 月 年」→ 出発日、後部 → タイトル
+ *   「散歩」を含む→その他、「サイクリング」を含む→サイクリング、それ以外→ドライブ
+ */
+function parseTripFileName(name) {
+  const base = name.replace(/^\d{10,}_/, '').replace(/\.[^.]+$/, '');
+  const m = base.match(/^(\d{1,2})[\s_　]+(\d{1,2})[\s_　]*月[\s_　]*(\d{4})[\s_　]*(.*)$/);
+  let date = '', title = base;
+  if (m) {
+    const d = +m[1], mo = +m[2], y = +m[3];
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d) date = `${y}-${pad2(mo)}-${pad2(d)}`;
+    title = m[4];
+  }
+  title = title.replace(/[_\s　]+/g, ' ').trim() || base;
+  const type = /散歩/.test(base) ? 'other' : (/サイクリング/.test(base) ? 'cycling' : 'drive');
+  return { date, title: title.slice(0, 80), type };
+}
+function openBulkImport(files) {
+  if (!S.user) { openAuth('login'); return; }
+  S.bulk = { items: [], vis: 'private', running: false, done: false };
+  renderBulk();
+  if (files && files.length) addBulkFiles(files);
+}
+async function addBulkFiles(files) {
+  const b = S.bulk;
+  for (const f of Array.from(files)) {
+    if (!ROUTE_EXT.test(f.name)) continue;
+    if (b.items.some(x => x.fileName === f.name)) continue;
+    const meta = parseTripFileName(f.name);
+    const it = { fileName: f.name, ...meta, on: true, status: 'wait', msg: '', route: null, km: 0 };
+    try {
+      it.route = normalizeRoute(parseRouteText(await f.text(), meta.title));
+      it.stats = computeStats(it.route.points);
+      it.km = it.stats.distanceKm;
+      if (!meta.date && it.stats.startTime) it.date = dateOf(it.stats.startTime);
+      if (S.trips.some(t => t.title === it.title && t.startDate === it.date)) { it.on = false; it.msg = '登録済みのため外しました'; }
+      else if (it.km < 0.1) it.msg = 'ほとんど移動していないルートです';
+    } catch (e) {
+      it.on = false; it.status = 'ng'; it.msg = e.message;
+    }
+    b.items.push(it);
+  }
+  b.items.sort((x, y) => String(x.date).localeCompare(String(y.date)));
+  renderBulk();
+}
+function bulkStatus(it) {
+  if (it.status === 'ok') return '<span class="st ok">✓ 取り込み済み</span>';
+  if (it.status === 'run') return '<span class="st run">取り込み中…</span>';
+  if (it.status === 'ng') return `<span class="st ng">× ${esc(it.msg)}</span>`;
+  return it.msg ? `<span>${esc(it.msg)}</span>` : '<span></span>';
+}
+function renderBulk() {
+  const b = S.bulk;
+  const n = b.items.filter(x => x.on && x.route && x.status !== 'ok').length;
+  const rows = b.items.map((it, i) => `<div class="bk ${it.on ? '' : 'off'}" id="bk_${i}">
+      <input type="checkbox" data-bk="${i}" data-f="on" ${it.on ? 'checked' : ''} ${!it.route || it.status === 'ok' || b.running ? 'disabled' : ''} aria-label="取り込む">
+      <div class="bk-f">
+        <input class="inp full" data-bk="${i}" data-f="title" value="${esc(it.title)}" maxlength="80" aria-label="タイトル" ${b.running || it.status === 'ok' ? 'disabled' : ''}>
+        <input class="inp" type="date" data-bk="${i}" data-f="date" value="${esc(it.date)}" aria-label="出発日" ${b.running || it.status === 'ok' ? 'disabled' : ''}>
+        <select class="inp" data-bk="${i}" data-f="type" aria-label="種類" ${b.running || it.status === 'ok' ? 'disabled' : ''}>
+          ${Object.keys(TYPE_LABEL).map(k => `<option value="${k}" ${k === it.type ? 'selected' : ''}>${TYPE_ICON[k]} ${TYPE_LABEL[k]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="bk-m"><span class="num" style="font-size:14px">${it.route ? fmtKm(it.km) + ' km' : '—'}</span><span id="bks_${i}">${bulkStatus(it)}</span></div>
+    </div>`).join('');
+  openModal(`<div class="mhead"><h3>GPXをまとめて取り込む</h3>${b.running ? '' : X_BTN}</div>
+    ${b.running || b.done ? '' : `<label class="drop small" data-drop="bulk">GPX・KML・GeoJSON を複数ドロップ、またはタップして選ぶ
+      <input type="file" id="bkFiles" accept=".gpx,.kml,.geojson,.json" multiple hidden></label>
+      <p class="hint" style="line-height:1.7">ファイル名「29 3 月 2025多摩川でキャンプ.gpx」の前部を出発日、後部をタイトルにします。種類は「散歩」を含むと「その他」、「サイクリング」を含むと「サイクリング」、それ以外は「ドライブ」。取り込む前に各欄を直せます。</p>`}
+    ${b.items.length ? `<div class="bk-list">${rows}</div>` : ''}
+    <div class="field" style="margin-bottom:10px"><span class="lbl">公開範囲（すべてに適用）</span><div class="seg">
+      <label><input type="radio" name="bkVis" value="private" ${b.vis === 'private' ? 'checked' : ''} ${b.running ? 'disabled' : ''}>🔒 非公開</label>
+      <label><input type="radio" name="bkVis" value="members" ${b.vis === 'members' ? 'checked' : ''} ${b.running ? 'disabled' : ''}>👥 会員に公開</label>
+    </div></div>
+    <p id="bkProg" class="text-sm muted"></p>
+    ${b.done ? `<button class="btn btn-route w-full mt-2" data-act="closeModal">閉じる</button>`
+      : `<button class="btn btn-route w-full mt-2" data-act="bulkRun" ${n && !b.running ? '' : 'disabled'}>${b.running ? '取り込み中…' : n + '件を取り込む'}</button>`}`, { locked: b.running });
+  const fi = $('#bkFiles');
+  if (fi) fi.addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; addBulkFiles(fs); });
+  $$('#modalRoot [data-bk]').forEach(el => el.addEventListener('change', () => {
+    const it = b.items[+el.dataset.bk];
+    if (el.dataset.f === 'on') { it.on = el.checked; renderBulk(); return; }
+    it[el.dataset.f] = el.value.trim();
+  }));
+  $$('#modalRoot input[name=bkVis]').forEach(r => r.addEventListener('change', () => { b.vis = r.value; }));
+}
+async function runBulk() {
+  const b = S.bulk;
+  const targets = b.items.filter(x => x.on && x.route && x.status !== 'ok');
+  if (!targets.length) return;
+  if (targets.some(x => !x.title)) { toast('タイトルが空の行があります', 'err'); return; }
+  b.running = true; renderBulk();
+  let ok = 0, ng = 0, k = 0;
+  for (const it of targets) {
+    const i = b.items.indexOf(it);
+    it.status = 'run';
+    const st = $('#bks_' + i); if (st) st.innerHTML = bulkStatus(it);
+    const pg = $('#bkProg'); if (pg) pg.textContent = `${++k} / ${targets.length} 件目を取り込んでいます…`;
+    try {
+      const r = await api('importTrip', {
+        trip: { title: it.title, tripType: it.type, startDate: it.date, endDate: '', description: '', visibility: b.vis },
+        route: { name: it.title, points: it.route.points, stats: routeStatsPayload(it.stats) }
+      });
+      it.status = 'ok'; ok++;
+      syncTripInList(r.trip);
+    } catch (e) {
+      it.status = 'ng'; it.msg = e.message; ng++;
+      if (e.code === 'AUTH') break;
+    }
+    const st2 = $('#bks_' + i); if (st2) st2.innerHTML = bulkStatus(it);
+    const box = $('#bk_' + i); if (box) box.scrollIntoView({ block: 'nearest' });
+  }
+  b.running = false; b.done = !b.items.some(x => x.on && x.route && x.status !== 'ok');
+  S.publicLoaded = false;
+  renderBulk();
+  const pg = $('#bkProg'); if (pg) pg.textContent = `取り込み完了：成功 ${ok}件${ng ? `、失敗 ${ng}件（失敗した行はもう一度取り込めます）` : ''}`;
+  toast(`${ok}件のトリップを取り込みました`);
+  loadTrips();
+}
 async function importFromFile(file) {
   try {
     const parsed = parseRouteText(await file.text(), file.name.replace(/\.[^.]+$/, ''));
@@ -1767,6 +1898,8 @@ const ACT = {
     if (S.listTab === 'public' && !S.publicLoaded) loadPublic(); else renderPanel();
   },
   toggleVis: () => { if (canEdit()) toggleVisibility(); },
+  bulkImport: () => openBulkImport(),
+  bulkRun: () => runBulk(),
   like: () => toggleLike(),
   cmtEdit: el => { S.editCmt = el.dataset.id; renderPanel(); },
   cmtCancel: () => { S.editCmt = null; renderPanel(); },
@@ -1830,9 +1963,12 @@ async function handleDroppedFiles(files, zone) {
   if (zone === 'import') { const f = files.find(x => ROUTE_EXT.test(x.name)) || files[0]; if (f) importFromFile(f); return; }
   if (zone === 'trip') { const f = files.find(x => ROUTE_EXT.test(x.name)); if (f) setTripFormRoute(f); else toast('GPX・KML・GeoJSON を選んでください', 'err'); return; }
   if (zone === 'editor') { addEditorFiles(files); return; }
+  if (zone === 'bulk') { addBulkFiles(files); return; }
   if (zone === 'routeimg') { const f = files.find(x => /^image\//.test(x.type)); if (f) setRouteImage(f); else toast('画像ファイルを選んでください', 'err'); return; }
   if (!$('#modalRoot').classList.contains('hidden')) return; // モーダル表示中は背面へのドロップを無視
-  const routeF = files.find(f => ROUTE_EXT.test(f.name));
+  const routeFs = files.filter(f => ROUTE_EXT.test(f.name));
+  if (routeFs.length > 1 && S.user && !S.trip) { openBulkImport(routeFs); return; }
+  const routeF = routeFs[0];
   const media = files.filter(f => /^(image|video)\//.test(f.type));
   if (routeF) {
     try { await importRoute(parseRouteText(await routeF.text(), routeF.name.replace(/\.[^.]+$/, ''))); }
