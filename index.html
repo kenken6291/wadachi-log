@@ -459,9 +459,22 @@ function initMap() {
   const gsiPhoto = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
     maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル（写真）</a>' });
 
-  map = L.map('map', { zoomControl: false, layers: [osm] }).setView([35.681, 139.767], 11);
+  const gsiStd = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' });
+  // ファイルを直接開いた場合（file://）は OSM がアクセスを拒否するため、地理院地図を使う
+  const isLocalFile = location.protocol === 'file:';
+  const first = isLocalFile ? gsiStd : osm;
+  map = L.map('map', { zoomControl: false, layers: [first] }).setView([35.681, 139.767], 11);
   L.control.zoom({ position: 'topright', zoomInTitle: '拡大', zoomOutTitle: '縮小' }).addTo(map);
-  L.control.layers({ 'OpenStreetMap': osm, '地理院 淡色': gsiPale, '航空写真': gsiPhoto }, null, { position: 'topright' }).addTo(map);
+  L.control.layers({ 'OpenStreetMap': osm, '地理院 標準': gsiStd, '地理院 淡色': gsiPale, '航空写真': gsiPhoto }, null, { position: 'topright' }).addTo(map);
+  // OSM のタイルが続けて読めないときは地理院地図に自動で切り替える
+  let osmErr = 0;
+  osm.on('tileerror', () => {
+    if (++osmErr < 3 || !map.hasLayer(osm)) return;
+    map.removeLayer(osm); gsiStd.addTo(map);
+    toast('OpenStreetMap の地図を読み込めなかったため、地理院地図に切り替えました');
+  });
+  if (isLocalFile) setTimeout(() => toast('ファイルを直接開いています。GitHub Pages のURLで開くと、OpenStreetMap も表示できます'), 800);
   L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
   routeLayer = L.layerGroup().addTo(map);
   spotLayer = L.layerGroup().addTo(map);
