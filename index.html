@@ -152,6 +152,15 @@
   .bk-m { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
   .bk-m .st { font-weight: 700; }
   .bk-m .ok { color: var(--moss); } .bk-m .ng { color: #B3261E; } .bk-m .run { color: var(--route); }
+  .trip-row { display: flex; align-items: stretch; gap: 6px; }
+  .trip-row .trip { flex: 1; min-width: 0; }
+  .tchk { display: flex; align-items: center; justify-content: center; width: 30px; flex: none; cursor: pointer; border-radius: 8px; }
+  .tchk:hover { background: var(--mist); }
+  .tchk input { width: 20px; height: 20px; cursor: pointer; }
+  .tchk input:disabled { cursor: default; opacity: .35; }
+  .trip.sel { box-shadow: inset 4px 0 0 var(--c, var(--route)); }
+  .sel-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
+  .sel-bar b { font-family: "Barlow Condensed", sans-serif; font-size: 17px; }
   .owner { font-size: 13px; font-weight: 700; color: var(--moss); }
   .empty { background: #fff; border: 1px dashed #B6C2BB; border-radius: 12px; padding: 18px; line-height: 1.75; }
 
@@ -396,7 +405,7 @@
 /* ============================================================
  * 設定：GASウェブアプリのURLを貼り付けてください
  * ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
+const GAS_URL = 'PASTE_YOUR_GAS_WEB_APP_URL_HERE';
 const MAX_VIDEO_MB = 28;
 
 const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
@@ -422,7 +431,8 @@ const S = {
   tab: 'timeline', aiPhotos: true,
   pick: null, editor: null, viewer: null, pendingRoute: null,
   lastEmail: '', tempPw: '',
-  imgFile: null, imgRoute: null, bulk: null
+  imgFile: null, imgRoute: null, bulk: null,
+  sel: (safeJSON(ls.get('wadachi.sel')) || []), routeCache: {}
 };
 
 /* ---------- helpers ---------- */
@@ -483,7 +493,7 @@ async function api(action, data = {}) {
 /* ============================================================
  * 地図
  * ============================================================ */
-let map, routeLayer, spotLayer, previewLayer, hoverMarker;
+let map, routeLayer, spotLayer, previewLayer, multiLayer, hoverMarker;
 function initMap() {
   const gsiPale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
     maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' });
@@ -512,6 +522,7 @@ function initMap() {
   routeLayer = L.layerGroup().addTo(map);
   spotLayer = L.layerGroup().addTo(map);
   previewLayer = L.layerGroup().addTo(map);
+  multiLayer = L.layerGroup().addTo(map);
 
   map.on('click', e => {
     if (S.pick) { const cb = S.pick; endPick(); cb(e.latlng); }
@@ -994,6 +1005,72 @@ function pbJumpTo(frac) {
   pbKeepVisible(true);
 }
 function closePbJump() { const b = $('#pbJump'); if (b) { b.classList.add('hidden'); b.innerHTML = ''; } }
+/* ---------- 一覧で選んだルートの重ね表示 ---------- */
+const SEL_COLORS = ['#D1206B', '#1F6FD1', '#2E8B3E', '#E67E00', '#7B3FC4', '#0F9AA8', '#8C5A2B', '#A6A000', '#D94FA5', '#3A4A44'];
+const SEL_MAX = 50;
+function selColor(i) { return SEL_COLORS[i % SEL_COLORS.length]; }
+function saveSel() { ls.set('wadachi.sel', JSON.stringify(S.sel)); }
+function allKnownTrips() {
+  const m = {};
+  S.trips.concat(S.publicTrips).forEach(t => { m[t.tripId] = t; });
+  return m;
+}
+async function setSelected(ids, on, fit) {
+  ids.forEach(id => {
+    const i = S.sel.indexOf(id);
+    if (on && i < 0) S.sel.push(id);
+    if (!on && i >= 0) S.sel.splice(i, 1);
+  });
+  if (S.sel.length > SEL_MAX) { S.sel = S.sel.slice(0, SEL_MAX); toast(`同時に表示できるのは${SEL_MAX}件までです`, 'err'); }
+  saveSel();
+  renderPanel();
+  await drawMulti(on && fit);
+}
+async function drawMulti(fit) {
+  if (!multiLayer) return;
+  multiLayer.clearLayers();
+  if (S.trip || !S.user || !S.sel.length) return;
+  const need = S.sel.filter(id => !S.routeCache[id]);
+  if (need.length) {
+    toast(`ルートを読み込んでいます（${need.length}件）…`);
+    try {
+      const r = await api('getRoutes', { tripIds: need });
+      need.forEach(id => { S.routeCache[id] = r.routes[id] || []; });
+    } catch (e) { toast(e.message, 'err'); return; }
+    if (S.trip) return; // 読み込み中にトリップを開いた場合
+  }
+  multiLayer.clearLayers();
+  const trips = allKnownTrips();
+  const bounds = L.latLngBounds([]);
+  // 選択の古い順に描き、新しく選んだものを上に重ねる
+  S.sel.forEach((id, i) => {
+    const pts = S.routeCache[id];
+    if (!pts || pts.length < 2) return;
+    const col = selColor(i);
+    const t = trips[id] || {};
+    const label = `${t.title || 'ルート'}${t.startDate ? '（' + fmtDate(t.startDate) + '）' : ''}`;
+    L.polyline(pts, { color: '#fff', weight: 7, opacity: .9, interactive: false }).addTo(multiLayer);
+    const line = L.polyline(pts, { color: col, weight: 4, opacity: .95 }).addTo(multiLayer);
+    line.bindTooltip(esc(label), { sticky: true });
+    line.on('click', () => openTrip(id));
+    line.on('mouseover', () => line.setStyle({ weight: 7 }));
+    line.on('mouseout', () => line.setStyle({ weight: 4 }));
+    L.circleMarker(pts[0], { radius: 5, color: '#fff', weight: 2, fillColor: col, fillOpacity: 1 }).bindTooltip(esc(label)).on('click', () => openTrip(id)).addTo(multiLayer);
+    pts.forEach(p => bounds.extend(p));
+  });
+  if (fit && bounds.isValid()) {
+    const bottom = isMobile() ? Math.round(window.innerHeight * 0.45) : 30;
+    map.fitBounds(bounds, { paddingTopLeft: [30, 40], paddingBottomRight: [30, bottom], maxZoom: 14 });
+  }
+}
+function fitMulti() {
+  const b = L.latLngBounds([]);
+  S.sel.forEach(id => (S.routeCache[id] || []).forEach(p => b.extend(p)));
+  if (!b.isValid()) return;
+  const bottom = isMobile() ? Math.round(window.innerHeight * 0.45) : 30;
+  map.fitBounds(b, { paddingTopLeft: [30, 40], paddingBottomRight: [30, bottom], maxZoom: 14 });
+  setSheet('peek');
+}
 /* ---------- pick on map ---------- */
 function startPick(msg, cb) {
   S.pick = cb;
@@ -1091,14 +1168,19 @@ function welcomeHtml() {
 }
 
 function tripItemHtml(t, pub) {
-  return `<button class="trip" data-act="openTrip" data-id="${esc(t.tripId)}">
+  const si = S.sel.indexOf(t.tripId);
+  const col = si >= 0 ? selColor(si) : '';
+  return `<div class="trip-row">
+  <label class="tchk" title="${t.hasRoute ? '地図に重ねて表示' : 'ルートがありません'}"><input type="checkbox" data-sel="${esc(t.tripId)}" ${si >= 0 ? 'checked' : ''} ${t.hasRoute ? '' : 'disabled'}
+    style="accent-color:${col || 'var(--moss)'}" aria-label="「${esc(t.title)}」のルートを地図に表示"></label>
+  <button class="trip ${si >= 0 ? 'sel' : ''}" style="${col ? '--c:' + col : ''}" data-act="openTrip" data-id="${esc(t.tripId)}">
     <span class="ti" aria-hidden="true">${TYPE_ICON[t.tripType] || '🧭'}</span>
     <span class="tb"><span class="tt">${esc(t.title)}</span>
       <span class="tm">${esc(fmtDate(t.startDate)) || '日付なし'}</span>
       <span class="tm" style="margin-top:4px">${pub ? `<span class="owner">${esc(t.ownerName)} さん${t.isOwner ? '（自分）' : ''}</span>` : visBadge(t, false)}</span></span>
     <span class="tn">${t.hasRoute ? `<b class="num">${fmtKm(t.distanceKm)}</b><small>km</small>` : '<small>ルートなし</small>'}<small>${t.spotCount}か所</small>
       <small style="margin-top:3px">♥ ${t.likeCount || 0}　💬 ${t.commentCount || 0}</small></span>
-  </button>`;
+  </button></div>`;
 }
 function listHtml() {
   const pub = S.listTab === 'public';
@@ -1116,7 +1198,16 @@ function listHtml() {
   else content = `<div class="trips">${list.map(t => tripItemHtml(t, pub)).join('')}</div>`;
   const note = pub ? '<p class="hint mb-3">ログインしている会員が公開したルートです。閲覧のみできます。</p>'
     : '<div class="flex justify-end gap-2 mb-3"><button class="btn btn-ghost btn-sm" data-act="bulkImport">📂 GPXをまとめて取り込む</button><button class="btn btn-ghost btn-sm md:hidden" data-act="newTrip">＋ 新規</button></div>';
-  return tabs + note + content;
+  const withRoute = list.filter(t => t.hasRoute);
+  const allOn = withRoute.length > 0 && withRoute.every(t => S.sel.includes(t.tripId));
+  const selBar = list.length ? `<div class="sel-bar">
+    <span class="flex-1">地図に重ねて表示：<b>${S.sel.length}</b> 件</span>
+    <span class="flex gap-2">
+      <button class="btn btn-ghost btn-sm" data-act="selAll" ${withRoute.length && !allOn ? '' : 'disabled'}>☑ 全選択</button>
+      <button class="btn btn-ghost btn-sm" data-act="selNone" ${S.sel.length ? '' : 'disabled'}>☐ 全選択解除</button>
+    </span>
+    ${S.sel.length ? `<button class="lnk" data-act="selFit" style="width:100%;text-align:right">選んだルート全体を表示</button>` : ''}</div>` : '';
+  return tabs + note + selBar + content;
 }
 
 function tripHtml() {
@@ -1396,6 +1487,7 @@ function afterLogin(r, msg) {
 function logout(expired, msg) {
   S.token = null; S.user = null; S.trips = []; S.trip = null; S.spots = []; S.tempPw = '';
   S.publicTrips = []; S.publicLoaded = false; S.listTab = 'mine';
+  S.routeCache = {}; if (multiLayer) multiLayer.clearLayers();
   ls.del('wadachi.token'); ls.del('wadachi.user');
   endPick();
   setRoute(null); drawSpots();
@@ -1439,7 +1531,7 @@ function openEditName() {
 /* ---------- trips ---------- */
 async function loadTrips() {
   S.loading = true; renderPanel();
-  try { const r = await api('listTrips'); S.trips = r.trips; }
+  try { const r = await api('listTrips'); S.trips = r.trips; if (!S.trip) drawMulti(false); }
   catch (e) { if (e.code !== 'AUTH') toast(e.message, 'err'); }
   finally { S.loading = false; if (!S.trip) renderPanel(); }
 }
@@ -1471,6 +1563,7 @@ async function openTrip(id) {
   try {
     const r = await api('getTrip', { tripId: id });
     S.trip = r.trip; S.spots = r.spots || []; S.tab = 'timeline';
+    if (multiLayer) multiLayer.clearLayers();
     S.comments = r.comments || []; S.liked = !!r.liked; S.likeCount = r.likeCount || 0; S.editCmt = null; S.cmtDraft = '';
     setRoute(r.route && r.route.points && r.route.points.length > 1 ? normalizeRoute(r.route) : null);
     drawSpots(); fitAll(); renderPanel(); setSheet('half');
@@ -1485,6 +1578,7 @@ function closeTrip() {
   S.trip = null; S.spots = [];
   S.comments = []; S.liked = false; S.likeCount = 0; S.editCmt = null; S.cmtDraft = '';
   setRoute(null); drawSpots(); renderPanel();
+  drawMulti(false);
   history.replaceState(null, '', location.pathname);
 }
 function syncTripInList(t) {
@@ -1553,6 +1647,7 @@ async function deleteTrip() {
   try {
     await api('deleteTrip', { tripId: S.trip.tripId });
     S.trips = S.trips.filter(x => x.tripId !== S.trip.tripId);
+    S.sel = S.sel.filter(id => id !== S.trip.tripId); saveSel();
     closeTrip(); toast('トリップを削除しました');
   } catch (e) { toast(e.message, 'err'); }
 }
@@ -1569,6 +1664,7 @@ async function importRoute(raw) {
     const res = await api('saveRoute', { tripId: S.trip.tripId, spotCount: S.spots.length, route: { name: r.name, points: r.points, stats: routeStatsPayload(st) } });
     S.trip = { ...S.trip, ...res.trip };
     syncTripInList(S.trip);
+    delete S.routeCache[S.trip.tripId];
     setRoute(r); fitAll(); renderPanel();
     toast('ルートを保存しました');
     return;
@@ -2160,6 +2256,12 @@ const ACT = {
   },
   toggleVis: () => { if (canEdit()) toggleVisibility(); },
   bulkImport: () => openBulkImport(),
+  selAll: () => {
+    const list = (S.listTab === 'public' ? S.publicTrips : S.trips).filter(t => t.hasRoute).map(t => t.tripId);
+    setSelected(list, true, true);
+  },
+  selNone: () => setSelected([...S.sel], false, false),
+  selFit: () => fitMulti(),
   bulkRun: () => runBulk(),
   like: () => toggleLike(),
   cmtEdit: el => { S.editCmt = el.dataset.id; renderPanel(); },
@@ -2276,7 +2378,10 @@ function bindGlobal() {
     if (el && el.dataset.act !== 'sheet') runAct(el, e);
   });
   $('#modalRoot').addEventListener('mousedown', e => { if (e.target.id === 'modalRoot') closeModal(); });
-  document.addEventListener('change', e => { if (e.target.id === 'aiPhotos') S.aiPhotos = e.target.checked; });
+  document.addEventListener('change', e => {
+    if (e.target.id === 'aiPhotos') S.aiPhotos = e.target.checked;
+    if (e.target.dataset && e.target.dataset.sel) setSelected([e.target.dataset.sel], e.target.checked, true);
+  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (!$('#modalRoot').classList.contains('hidden')) closeModal();
