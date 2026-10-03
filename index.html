@@ -218,6 +218,17 @@
   .pb-near img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; background: var(--mist); }
   .pb-near .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pb-add { flex: none; }
+  .pb-info { background: none; border: 0; padding: 2px 4px; border-radius: 6px; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 4px; }
+  .pb-info:hover { background: var(--mist); }
+  .pb-jump { position: absolute; right: 0; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px; box-shadow: 0 10px 30px rgba(20,30,27,.25); z-index: 5; }
+  .pb-jump h4 { font-weight: 700; font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .pb-jump form { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .pb-jump .lb { font-size: 12px; font-weight: 700; width: 34px; flex: none; }
+  .pb-jump .inp { padding: 7px 9px; font-size: 15px; flex: 1; min-width: 0; }
+  .pb-jump .u { font-size: 12px; color: var(--muted); flex: none; }
+  .pb-jump .rng { font-size: 11px; color: var(--muted); margin: -4px 0 8px 40px; }
+  @media (max-width: 767px) { .pb-jump { bottom: auto; top: calc(100% + 8px); } }
   .pb-opt { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; flex: none; color: var(--muted); }
   .pb-opt input { width: 16px; height: 16px; accent-color: var(--route); }
   #pbPhoto { position: absolute; z-index: 820; left: 16px; top: 16px; width: 380px; max-width: calc(100% - 32px); background: #fff; border-radius: 16px; overflow: hidden;
@@ -244,6 +255,7 @@
     #playbar { top: 10px; bottom: auto; }
     #pickBanner { top: 10px; }
     #pbInfo { min-width: 64px; font-size: 15px; }
+    .pb-jump { right: -2px; }
   }
   #dropOverlay { position: absolute; inset: 12px; z-index: 850; border: 3px dashed var(--route); border-radius: 18px; background: rgba(243,245,241,.86);
     display: grid; place-items: center; text-align: center; font-weight: 700; font-size: 18px; pointer-events: none; line-height: 1.8; }
@@ -340,7 +352,8 @@
         <option value="45" selected>ふつう</option>
         <option value="18">はやい</option>
       </select>
-      <span id="pbInfo" class="num">0.0 km</span>
+      <button id="pbInfo" class="num pb-info" data-act="pbJump" title="距離・時刻を指定して移動" aria-label="距離・時刻を指定して移動">0.0 km</button>
+      <div id="pbJump" class="pb-jump hidden"></div>
       <button class="pb-x" data-act="togglePlay" aria-label="再生バーを閉じる">×</button>
       <div class="pb-row2">
         <div id="pbNear" class="pb-near"><span class="muted">再生を止めた地点に写真・動画を登録できます</span></div>
@@ -749,6 +762,7 @@ function showPlaybar(show) {
   } else {
     pbPause();
     pbHideCard();
+    closePbJump();
     PB.shown.clear();
     if (PB.marker) PB.marker.remove();
   }
@@ -854,6 +868,7 @@ function pbTick(ts) {
 }
 function pbPlay() {
   if (PB.playing) { pbPause(); return; }
+  closePbJump();
   if (PB.frac >= 1) { PB.frac = 0; PB.shown.clear(); }
   if (PB.card) { PB.shown.add(PB.card.s.spotId); pbHideCard(); }
   PB.playing = true; PB.last = 0; PB.nearId = undefined;
@@ -869,6 +884,71 @@ function pbPause() {
 }
 function pbReset() { PB.frac = 0; if (PB.on) showPlaybar(false); }
 
+/* ---------- 距離・時刻を指定して移動 ---------- */
+function openPbJump() {
+  if (!S.route) return;
+  pbPause();
+  const st = S.stats, totKm = st.cum[st.cum.length - 1] / 1000;
+  const p = posAtFrac(PB.frac);
+  const multi = st.startTime != null && dateOf(st.startTime) !== dateOf(st.endTime);
+  const hm = ms => { const d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+  const box = $('#pbJump');
+  const cur = p.time || st.startTime;
+  box.innerHTML = `<h4>位置を指定して移動<button class="x" data-act="pbJumpClose" aria-label="閉じる" style="width:28px;height:28px;font-size:18px">×</button></h4>
+    <form id="fJumpKm" novalidate><span class="lb">距離</span>
+      <input class="inp num" type="number" name="km" step="0.1" min="0" max="${totKm.toFixed(1)}" value="${(p.dist / 1000).toFixed(1)}" inputmode="decimal" aria-label="スタートからの距離（km）">
+      <span class="u">km</span><button type="submit" class="btn btn-ink btn-sm">移動</button></form>
+    <p class="rng">0〜${fmtKm(totKm)} km</p>
+    ${st.startTime != null ? `<form id="fJumpTm" novalidate><span class="lb">時刻</span>
+      <input class="inp num" type="${multi ? 'datetime-local' : 'time'}" name="tm" value="${multi ? toLocalInput(new Date(cur).toISOString()) : hm(cur)}" aria-label="通過時刻">
+      <button type="submit" class="btn btn-ink btn-sm">移動</button></form>
+    <p class="rng">${multi ? fmtTime(new Date(st.startTime).toISOString()) + '〜' + fmtTime(new Date(st.endTime).toISOString()) : hm(st.startTime) + '〜' + hm(st.endTime)}</p>`
+    : '<p class="rng" style="margin-left:0">このルートには時刻の記録がないため、距離で指定してください。</p>'}
+    <p class="ferr" style="margin:0"></p>`;
+  box.classList.remove('hidden');
+  const err = box.querySelector('.ferr');
+  $('#fJumpKm').addEventListener('submit', e => {
+    e.preventDefault();
+    const km = parseFloat(e.target.km.value);
+    if (!isFinite(km) || km < 0) { err.textContent = '距離を数字で入力してください'; return; }
+    pbJumpTo(Math.min(1, (km * 1000) / (st.cum[st.cum.length - 1] || 1)));
+  });
+  const ft = $('#fJumpTm');
+  if (ft) ft.addEventListener('submit', e => {
+    e.preventDefault();
+    const v = e.target.tm.value;
+    if (!v) { err.textContent = '時刻を入力してください'; return; }
+    const target = multi ? new Date(v).getTime() : new Date(`${dateOf(st.startTime)}T${v}`).getTime();
+    if (isNaN(target)) { err.textContent = '時刻を読み取れませんでした'; return; }
+    if (target < st.startTime || target > st.endTime) { err.textContent = '記録の時間の範囲内で指定してください'; return; }
+    pbJumpTo(fracAtTime(target));
+  });
+  if (!isMobile()) setTimeout(() => { const i = box.querySelector('input'); if (i) i.select(); }, 30);
+}
+function fracAtTime(target) {
+  const pts = S.route.points, c = S.stats.cum, tot = c[c.length - 1] || 1;
+  let prev = -1;
+  for (let i = 0; i < pts.length; i++) {
+    const t = pts[i][3];
+    if (t == null) continue;
+    if (t >= target) {
+      if (prev < 0 || t === pts[prev][3]) return c[i] / tot;
+      const r = (target - pts[prev][3]) / (t - pts[prev][3]);
+      return (c[prev] + (c[i] - c[prev]) * r) / tot;
+    }
+    prev = i;
+  }
+  return 1;
+}
+function pbJumpTo(frac) {
+  closePbJump();
+  pbHideCard();
+  PB.shown.clear();
+  PB.nearId = undefined;
+  pbSet(frac);
+  map.panTo(PB.marker.getLatLng(), { animate: true });
+}
+function closePbJump() { const b = $('#pbJump'); if (b) { b.classList.add('hidden'); b.innerHTML = ''; } }
 /* ---------- pick on map ---------- */
 function startPick(msg, cb) {
   S.pick = cb;
@@ -2089,6 +2169,8 @@ const ACT = {
   },
   togglePlay: () => showPlaybar(!PB.on),
   pbPlay: () => pbPlay(),
+  pbJump: () => { if ($('#pbJump').classList.contains('hidden')) openPbJump(); else closePbJump(); },
+  pbJumpClose: () => closePbJump(),
   pbAdd: () => {
     if (!requireTrip() || !S.route) return;
     pbPause();
