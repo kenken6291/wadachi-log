@@ -228,7 +228,6 @@
   .pb-jump .inp { padding: 7px 9px; font-size: 15px; flex: 1; min-width: 0; }
   .pb-jump .u { font-size: 12px; color: var(--muted); flex: none; }
   .pb-jump .rng { font-size: 11px; color: var(--muted); margin: -4px 0 8px 40px; }
-  @media (max-width: 767px) { .pb-jump { bottom: auto; top: calc(100% + 8px); } }
   .pb-opt { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; flex: none; color: var(--muted); }
   .pb-opt input { width: 16px; height: 16px; accent-color: var(--route); }
   #pbPhoto { position: absolute; z-index: 820; left: 16px; top: 16px; width: 380px; max-width: calc(100% - 32px); background: #fff; border-radius: 16px; overflow: hidden;
@@ -249,13 +248,33 @@
   .pp-d { font-size: 13px; color: var(--muted); }
   .pp-m { font-size: 13px; line-height: 1.6; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
   .pp-a { display: flex; gap: 12px; margin-top: 6px; }
-  @media (max-width: 767px) { #pbPhoto { top: 132px; left: 12px; width: auto; right: 12px; max-width: none; } .pp-stage { aspect-ratio: 16 / 10; } }
   .pb-x { background: none; border: 0; font-size: 20px; color: var(--muted); width: 28px; }
+  .pb-br { display: none; }
   @media (max-width: 767px) {
-    #playbar { top: 10px; bottom: auto; }
     #pickBanner { top: 10px; }
-    #pbInfo { min-width: 64px; font-size: 15px; }
-    .pb-jump { right: -2px; }
+    /* スマホ：再生バーは下部パネルのすぐ上にコンパクトに置き、右上の地図ボタンと重ならないようにする */
+    #playbar { left: 8px; right: 8px; width: auto; transform: none; bottom: calc(104px + 8px); padding: 6px 8px; gap: 6px; row-gap: 6px; border-radius: 12px; }
+    #pbBtn { width: 34px; height: 34px; font-size: 12px; order: 1; }
+    #pbRange { order: 2; }
+    #pbInfo { order: 3; min-width: 0; font-size: 15px; padding: 2px; }
+    .pb-br { display: block; order: 4; flex-basis: 100%; height: 0; }
+    .pb-row2 { display: contents; }
+    #pbNear { order: 5; flex-basis: 100%; font-size: 12px; }
+    #pbNear.empty { display: none; }
+    .pb-near img { width: 26px; height: 26px; }
+    #pbSpeed { order: 6; font-size: 12px; padding: 3px 4px; }
+    .pb-opt { order: 7; }
+    #pbAdd { order: 8; margin-left: auto; padding: 6px 10px; }
+    .pb-x { order: 9; width: 24px; }
+    .hide-sm { display: none; }
+    .pb-jump { right: 0; left: 0; width: auto; max-width: none; }
+    /* 写真カードは上部に小さめに。右上の地図ボタンは避ける */
+    #pbPhoto { top: 8px; left: 8px; right: 56px; width: auto; max-width: none; border-radius: 12px; }
+    .pp-stage { aspect-ratio: auto; height: 24vh; }
+    .pp-body { padding: 6px 10px 8px; }
+    .pp-t { font-size: 14px; }
+    .pp-m { -webkit-line-clamp: 1; }
+    .pp-a { margin-top: 2px; }
   }
   #dropOverlay { position: absolute; inset: 12px; z-index: 850; border: 3px dashed var(--route); border-radius: 18px; background: rgba(243,245,241,.86);
     display: grid; place-items: center; text-align: center; font-weight: 700; font-size: 18px; pointer-events: none; line-height: 1.8; }
@@ -355,10 +374,11 @@
       <button id="pbInfo" class="num pb-info" data-act="pbJump" title="距離・時刻を指定して移動" aria-label="距離・時刻を指定して移動">0.0 km</button>
       <div id="pbJump" class="pb-jump hidden"></div>
       <button class="pb-x" data-act="togglePlay" aria-label="再生バーを閉じる">×</button>
+      <span class="pb-br" aria-hidden="true"></span>
       <div class="pb-row2">
-        <div id="pbNear" class="pb-near"><span class="muted">再生を止めた地点に写真・動画を登録できます</span></div>
+        <div id="pbNear" class="pb-near empty"><span class="muted">再生を止めた地点に写真・動画を登録できます</span></div>
         <label class="pb-opt" title="写真のある地点で再生を止めて写真を見せます"><input type="checkbox" id="pbStop" checked>写真で停止</label>
-        <button id="pbAdd" class="btn btn-route btn-sm pb-add" data-act="pbAdd">📷 この地点に追加</button>
+        <button id="pbAdd" class="btn btn-route btn-sm pb-add" data-act="pbAdd">📷 <span class="hide-sm">この地点に</span>追加</button>
       </div>
     </div>
     <div id="pbPhoto" class="hidden" role="dialog" aria-label="スポットの写真"></div>
@@ -759,6 +779,8 @@ function showPlaybar(show) {
     $('#pbAdd').classList.toggle('hidden', !canEdit());
     PB.nearId = undefined;
     pbSet(PB.frac);
+    if (isMobile()) { setSheet('peek'); setTimeout(() => pbKeepVisible(true), 320); }
+    else pbKeepVisible();
   } else {
     pbPause();
     pbHideCard();
@@ -785,6 +807,7 @@ function pbUpdateNear(p) {
   if (id === PB.nearId) return;
   PB.nearId = id;
   const box = $('#pbNear');
+  box.classList.toggle('empty', !near);
   if (!near) {
     box.innerHTML = canEdit()
       ? '<span class="muted">止めた地点に写真・動画・メモを登録できます</span>'
@@ -826,7 +849,9 @@ function renderPbCard(auto) {
       ${s.memo ? `<p class="pp-m">${esc(s.memo)}</p>` : ''}
       <div class="pp-a"><button class="lnk" data-act="ppOpen">大きく見る</button>${canEdit() ? `<button class="lnk" data-act="pbEdit" data-id="${esc(s.spotId)}">編集・削除</button>` : ''}</div>
     </div>`;
+  const wasHidden = box.classList.contains('hidden');
   box.classList.remove('hidden');
+  if (wasHidden) setTimeout(() => pbKeepVisible(), 30);
   // 次の写真を先読み
   if (media[c.i + 1]) { const im = new Image(); im.src = thumbUrl(media[c.i + 1].fileId, 1000); }
   clearTimeout(PB.cardT);
@@ -863,8 +888,28 @@ function pbTick(ts) {
   const f = PB.frac + dt / Number($('#pbSpeed').value);
   if (f >= 1) { pbSet(1); pbPause(); return; }
   pbSet(f);
-  if (!map.getBounds().pad(-0.15).contains(PB.marker.getLatLng())) map.panTo(PB.marker.getLatLng(), { animate: true });
+  pbKeepVisible();
   PB.raf = requestAnimationFrame(pbTick);
+}
+/** 再生マーカーが、再生バー・写真カード・下部パネルに隠れない位置に来るよう地図を動かす */
+function pbKeepVisible(force) {
+  if (!PB.marker || !map.hasLayer(PB.marker)) return;
+  const wrap = $('#mapWrap').getBoundingClientRect();
+  const size = map.getSize();
+  const pt = map.latLngToContainerPoint(PB.marker.getLatLng());
+  let top = 50, left = 40, right = size.x - 64, bottom = size.y - 30;
+  const card = $('#pbPhoto');
+  if (card && !card.classList.contains('hidden')) {
+    const r = card.getBoundingClientRect();
+    if (isMobile()) top = Math.max(top, r.bottom - wrap.top + 12);
+    else left = Math.max(left, r.right - wrap.left + 12);
+  }
+  const bar = $('#playbar');
+  if (bar && !bar.classList.contains('hidden')) bottom = Math.min(bottom, bar.getBoundingClientRect().top - wrap.top - 12);
+  if (isMobile()) bottom = Math.min(bottom, $('#panel').getBoundingClientRect().top - wrap.top - 12);
+  if (bottom - top < 40) top = Math.max(8, bottom - 40);
+  const out = pt.x < left || pt.x > right || pt.y < top || pt.y > bottom;
+  if (out || force) map.panBy([pt.x - (left + right) / 2, pt.y - (top + bottom) / 2], { animate: true, duration: .4 });
 }
 function pbPlay() {
   if (PB.playing) { pbPause(); return; }
@@ -946,7 +991,7 @@ function pbJumpTo(frac) {
   PB.shown.clear();
   PB.nearId = undefined;
   pbSet(frac);
-  map.panTo(PB.marker.getLatLng(), { animate: true });
+  pbKeepVisible(true);
 }
 function closePbJump() { const b = $('#pbJump'); if (b) { b.classList.add('hidden'); b.innerHTML = ''; } }
 /* ---------- pick on map ---------- */
