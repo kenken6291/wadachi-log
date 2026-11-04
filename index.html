@@ -460,14 +460,14 @@
 <input type="file" id="fileRoute" accept=".gpx,.kml,.geojson,.json,application/gpx+xml,application/vnd.google-earth.kml+xml,application/geo+json,application/json" hidden>
 
 <!-- 設定ファイル（GAS_URL など）。URLを変えるときは config.js だけを書き換えてください -->
-<script src="config.js?v=2.0.0"></script>
+<script src="config.js?v=2.0.1"></script>
 <script>
 'use strict';
 /* ============================================================
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -551,7 +551,7 @@ async function api(action, data = {}) {
   try { j = await res.json(); } catch (e) { throw new Error('サーバーの応答を読み取れませんでした。GASのデプロイ設定を確認してください'); }
   if (!j.ok) {
     if (j.error === 'AUTH' && action !== 'login') logout(true, j.message);
-    if (j.error === 'AGREE' && S.user) { S.user.needsAgreement = true; openAgree(); }
+    if (j.error === 'AGREE' && S.user) { S.user.needsAgreement = true; renderHeader(); openAgree(); }
     const e = new Error(j.message || 'エラーが発生しました');
     e.code = j.error;
     throw e;
@@ -1196,6 +1196,7 @@ function renderHeader() {
         <span class="av">${esc((S.user.displayName || '?').slice(0, 1))}</span><span class="acct-name">${esc(S.user.displayName)}</span></button>
       <div id="acctMenu" class="menu hidden" role="menu">
         <p class="menu-email">${esc(S.user.email)}</p>
+        ${S.user.needsAgreement ? '<button role="menuitem" data-act="agree" style="color:#B3261E;font-weight:700">⚠ 同意する（ご利用前の確認）</button>' : ''}
         <button role="menuitem" data-act="shareOverview">公開設定の一覧</button>
         <button role="menuitem" data-act="contacts">共有相手（家族・友人）</button>
         <hr>
@@ -1215,6 +1216,7 @@ function renderPanel() {
   pbPauseIfHidden();
   const body = $('#panelBody');
   if (!S.user) body.innerHTML = welcomeHtml();
+  else if (S.user.needsAgreement) body.innerHTML = agreeCardHtml();
   else if (S.trip) body.innerHTML = tripHtml();
   else body.innerHTML = listHtml();
   bindProfile();
@@ -2368,6 +2370,7 @@ const ACT = {
   },
   toggleVis: () => { if (canEdit()) openShareModal(); },
   help: () => openHelp(),
+  agree: () => openAgree(),
   terms: () => openTerms(),
   contacts: () => openContacts(),
   shareOverview: () => openOverview(),
@@ -2517,8 +2520,17 @@ function bindAgree(form, btn) {
   all.addEventListener('change', () => { items.forEach(x => { x.checked = all.checked; }); sync(); });
   sync();
 }
+function agreeCardHtml() {
+  return `<div class="empty" style="text-align:left">
+    <p class="font-bold" style="font-size:17px">ご利用前の確認が必要です</p>
+    <p class="text-sm mt-2" style="line-height:1.8">わだちログを使うには、注意事項・免責事項・自己責任・当事者間での解決への同意が必要です。下のボタンから内容を確認して、同意してください。</p>
+    <button class="btn btn-route w-full mt-4" data-act="agree">内容を確認して同意する</button>
+    <div class="text-center mt-3"><button class="lnk" data-act="logout">ログアウト</button></div></div>
+    <p class="ver">${esc(verText())}</p>`;
+}
 function openAgree() {
-  if ($('#fAgree')) return;
+  if ($('#fAgree') && !$('#modalRoot').classList.contains('hidden')) return;
+  renderPanel();
   openModal(`<div class="mhead"><h3>ご利用前の確認</h3></div>
     <p class="text-sm mb-3" style="line-height:1.7">わだちログを使うには、次の内容への同意が必要です（内容を見直したときも、あらためて確認をお願いしています）。</p>
     <form id="fAgree" novalidate>${termsHtml()}${agreeHtml()}
@@ -2529,6 +2541,7 @@ function openAgree() {
     const r = await api('agreeTerms', { agreements: agreeValues(d) });
     setSession(null, r.user);
     closeModal(true);
+    renderAll();
     toast('ありがとうございます。わだちログへようこそ');
     postAuthFlow();
   });
