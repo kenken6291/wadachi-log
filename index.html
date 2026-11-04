@@ -306,6 +306,64 @@
   .pop-a { display: flex; gap: 12px; margin-top: 6px; }
 
   /* ---------- modal ---------- */
+  /* ---------- v2: help / voice / share ---------- */
+  .hbtn { display: inline-flex; align-items: center; gap: 4px; color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 5px 11px; font-size: 13px; font-weight: 700; }
+  .hbtn:hover { background: rgba(255,255,255,.1); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+  .menu-ver { font-size: 11px; color: var(--muted); padding: 6px 12px 4px; }
+  .ver { font-size: 11px; color: var(--muted); margin-top: 22px; }
+  .ta-tools { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 6px; }
+  .mic { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700; }
+  .mic:hover { background: var(--mist); }
+  .mic.on { background: #B3261E; border-color: #B3261E; color: #fff; }
+  .mic.on::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: micPulse 1.1s ease-in-out infinite; }
+  @keyframes micPulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .mic.on::before { animation: none; } }
+  .spk { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 11px; font-size: 13px; font-weight: 700; color: var(--moss); }
+  .spk.on { background: var(--moss); color: #fff; border-color: var(--moss); }
+  .terms { max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: #FAFBF9; font-size: 13px; line-height: 1.75; }
+  .terms.full { max-height: none; }
+  .terms h5 { font-weight: 700; font-size: 14px; margin: 10px 0 2px; }
+  .terms h5:first-child { margin-top: 0; }
+  .terms ul { list-style: disc; padding-left: 1.3em; }
+  .agree { margin: 12px 0 6px; }
+  .agree label { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.55; padding: 6px 0; cursor: pointer; }
+  .agree input { width: 19px; height: 19px; flex: none; margin-top: 1px; accent-color: var(--moss); }
+  .agree .all { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; font-weight: 700; }
+  .vis.sel { background: #E3EEF9; color: #1D4F86; }
+  .btn-line { background: #06C755; color: #fff; }
+  .btn-line:hover { background: #05A548; }
+  .sharebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .sharebar .sb-l { font-size: 13px; font-weight: 700; flex: 1 0 100%; }
+  .sharebar .sb-n { font-size: 12px; color: var(--muted); flex: 1 0 100%; line-height: 1.6; }
+  .clist { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
+  .crow { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: #fff; }
+  .crow .cn { flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; }
+  .crow .cn small { display: block; color: var(--muted); font-size: 12px; word-break: break-all; }
+  .crow input[type=checkbox] { width: 19px; height: 19px; accent-color: var(--moss); flex: none; }
+  .crow .inp { width: 7.5em; padding: 6px 8px; font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid #C3CDC6; border-radius: 999px; padding: 5px 11px; font-size: 13px; background: #fff; color: var(--ink); }
+  .chip.on { background: var(--moss); border-color: var(--moss); color: #fff; font-weight: 700; }
+  .chip.on::before { content: "✓ "; }
+  .ov { display: flex; flex-direction: column; gap: 8px; }
+  .ov-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fff; display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; }
+  .ov-row .ov-t { font-weight: 700; font-size: 14px; line-height: 1.4; min-width: 0; }
+  .ov-row .ov-t small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .ov-row select { width: auto; padding: 7px 8px; font-size: 14px; }
+  .ov-row .chips, .ov-row .ov-x { grid-column: 1 / -1; }
+  .ov-row .ov-x { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .ov-row.saving { opacity: .6; }
+  .ov-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .help details { border: 1px solid var(--line); border-radius: 10px; background: #fff; margin-bottom: 8px; }
+  .help summary { cursor: pointer; padding: 11px 14px; font-weight: 700; font-size: 14px; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+  .help summary::-webkit-details-marker { display: none; }
+  .help summary::after { content: "＋"; color: var(--muted); }
+  .help details[open] summary::after { content: "－"; }
+  .help .hb { padding: 0 14px 12px; font-size: 14px; line-height: 1.8; }
+  .help .hb ol { list-style: decimal; padding-left: 1.4em; }
+  .help .hb ul { list-style: disc; padding-left: 1.3em; }
+  .help .hb b { color: var(--moss); }
   #modalRoot { position: fixed; inset: 0; z-index: 2000; background: rgba(20,30,27,.52); display: flex; align-items: flex-end; justify-content: center; }
   .modal { background: #fff; width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 18px 20px calc(22px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
   .modal.wide { max-width: 860px; }
@@ -359,6 +417,7 @@
     <span>わだちログ</span>
   </div>
   <div class="flex items-center gap-2">
+    <button class="hbtn" data-act="help" aria-label="使い方">？<span class="hide-sm">使い方</span></button>
     <button id="btnNewTrip" class="btn btn-route btn-sm hidden" data-act="newTrip">＋ 新しいトリップ</button>
     <div id="authArea"></div>
   </div>
@@ -400,12 +459,20 @@
 <input type="file" id="filePhotos" accept="image/*,video/*" multiple hidden>
 <input type="file" id="fileRoute" accept=".gpx,.kml,.geojson,.json,application/gpx+xml,application/vnd.google-earth.kml+xml,application/geo+json,application/json" hidden>
 
+<!-- 設定ファイル（GAS_URL など）。URLを変えるときは config.js だけを書き換えてください -->
+<script src="config.js?v=2.0.0"></script>
 <script>
 'use strict';
 /* ============================================================
- * 設定：GASウェブアプリのURLを貼り付けてください
+ * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
+ *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
+const APP_VERSION = '2.0.0';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
+const CFG = window.WADACHI_CONFIG || {};
+const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
+const APP_URL = String(CFG.APP_URL || (location.origin + location.pathname)).replace(/index\.html$/, '');
+const CONFIG_LOADED = !!window.WADACHI_CONFIG;
 const MAX_VIDEO_MB = 28;
 
 const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
@@ -424,7 +491,8 @@ const S = {
   token: ls.get('wadachi.token'),
   user: safeJSON(ls.get('wadachi.user')),
   trips: [], loading: false,
-  listTab: 'mine', publicTrips: [], publicLoaded: false,
+  listTab: 'mine', publicTrips: [], publicLoaded: false, sharedTrips: [], sharedLoaded: false,
+  contacts: null, shareEd: null, ov: null, serverVersion: '', pendingTrip: null,
   comments: [], liked: false, likeCount: 0, editCmt: null, cmtDraft: '',
   trip: null, spots: [],
   route: null, stats: null,
@@ -467,7 +535,7 @@ function dateOf(ms) { const d = new Date(ms); return `${d.getFullYear()}-${pad2(
 const GAS_URL_OK = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(GAS_URL.trim());
 function gasReady() { return GAS_URL_OK; }
 async function api(action, data = {}) {
-  if (!gasReady()) throw new Error('GAS_URL の形式が正しくありません。index.html 冒頭の GAS_URL を「https://script.google.com/macros/s/…/exec」だけにしてください（/exec の後ろに文字が残っていないか確認）');
+  if (!gasReady()) throw new Error('GAS_URL の形式が正しくありません。config.js の GAS_URL を「https://script.google.com/macros/s/…/exec」だけにしてください（/exec の後ろに文字が残っていないか確認）');
   let res;
   try {
     res = await fetch(GAS_URL.trim(), {
@@ -483,6 +551,7 @@ async function api(action, data = {}) {
   try { j = await res.json(); } catch (e) { throw new Error('サーバーの応答を読み取れませんでした。GASのデプロイ設定を確認してください'); }
   if (!j.ok) {
     if (j.error === 'AUTH' && action !== 'login') logout(true, j.message);
+    if (j.error === 'AGREE' && S.user) { S.user.needsAgreement = true; openAgree(); }
     const e = new Error(j.message || 'エラーが発生しました');
     e.code = j.error;
     throw e;
@@ -675,12 +744,16 @@ function setRoute(r) {
   L.circleMarker(ll[ll.length - 1], { radius: 7, color: '#fff', weight: 3, fillColor: '#1F2E29', fillOpacity: 1 }).bindTooltip('ゴール').addTo(routeLayer);
 }
 const canEdit = () => !!(S.trip && S.trip.isOwner);
+function visLabel(t) {
+  if (t.visibility === 'members') return '👥 会員全体に公開';
+  if (t.visibility === 'selected') return `👪 指定した会員に公開（${t.shareCount || (t.shareIds || []).length || 0}人）`;
+  return '🔒 非公開';
+}
+function visCls(t) { return t.visibility === 'members' ? 'pub' : t.visibility === 'selected' ? 'sel' : ''; }
 function visBadge(t, asButton) {
-  const pub = t.visibility === 'members';
-  const label = pub ? '👥 会員に公開' : '🔒 非公開';
   return asButton
-    ? `<button class="vis ${pub ? 'pub' : ''}" data-act="toggleVis" title="タップで公開範囲を切り替え">${label}</button>`
-    : `<span class="vis ${pub ? 'pub' : ''}">${label}</span>`;
+    ? `<button class="vis ${visCls(t)}" data-act="toggleVis" title="タップで公開範囲・共有相手を変更">${visLabel(t)} ▾</button>`
+    : `<span class="vis ${visCls(t)}">${visLabel(t)}</span>`;
 }
 function sortedSpots() {
   const t = s => s.takenAt ? Date.parse(s.takenAt) : Infinity;
@@ -1012,7 +1085,7 @@ function selColor(i) { return SEL_COLORS[i % SEL_COLORS.length]; }
 function saveSel() { ls.set('wadachi.sel', JSON.stringify(S.sel)); }
 function allKnownTrips() {
   const m = {};
-  S.trips.concat(S.publicTrips).forEach(t => { m[t.tripId] = t; });
+  S.trips.concat(S.publicTrips, S.sharedTrips).forEach(t => { m[t.tripId] = t; });
   return m;
 }
 async function setSelected(ids, on, fit) {
@@ -1123,9 +1196,15 @@ function renderHeader() {
         <span class="av">${esc((S.user.displayName || '?').slice(0, 1))}</span><span class="acct-name">${esc(S.user.displayName)}</span></button>
       <div id="acctMenu" class="menu hidden" role="menu">
         <p class="menu-email">${esc(S.user.email)}</p>
+        <button role="menuitem" data-act="shareOverview">公開設定の一覧</button>
+        <button role="menuitem" data-act="contacts">共有相手（家族・友人）</button>
+        <hr>
         <button role="menuitem" data-act="editName">表示名を変更</button>
         <button role="menuitem" data-act="changePw">パスワードを変更</button>
+        <button role="menuitem" data-act="help">使い方</button>
+        <button role="menuitem" data-act="terms">注意事項・免責事項</button>
         <button role="menuitem" data-act="logout">ログアウト</button>
+        <p class="menu-ver">${esc(verText())}</p>
       </div></div>`;
   } else {
     a.innerHTML = `<button class="btn btn-light btn-sm" data-act="login">ログイン</button>`;
@@ -1140,6 +1219,7 @@ function renderPanel() {
   else body.innerHTML = listHtml();
   bindProfile();
   bindComments();
+  refreshVoiceUi();
 }
 function pbPauseIfHidden() { if (!S.route && PB.on) showPlaybar(false); }
 
@@ -1164,7 +1244,10 @@ function welcomeHtml() {
       <button class="btn btn-ghost btn-sm mt-3" data-act="pickRoute">ルートファイルを選ぶ</button>
       ${S.route ? meterHtml() + profileHtml() + `<div class="subacts"><button class="lnk" data-act="togglePlay">ルートを再生</button></div>` : ''}
     </div>
-    ${gasReady() ? '' : '<p class="note">管理者の方へ：index.html の GAS_URL が未設定か、形式が正しくありません（…/exec で終わるURLだけを入れてください）。</p>'}`;
+    ${S.pendingTrip ? '<p class="note">共有されたトリップのリンクから開きました。見るには、ログインしてください（共有した人があなたを共有相手に指定している必要があります）。</p>' : ''}
+    <div class="subacts mt-4"><button class="lnk" data-act="help">使い方を見る</button><button class="lnk" data-act="terms">注意事項・免責事項</button></div>
+    ${gasReady() ? '' : '<p class="note">管理者の方へ：config.js の GAS_URL が未設定か、形式が正しくありません（…/exec で終わるURLだけを入れてください）。</p>'}
+    <p class="ver">${esc(verText())}</p>`;
 }
 
 function tripItemHtml(t, pub) {
@@ -1182,22 +1265,26 @@ function tripItemHtml(t, pub) {
       <small style="margin-top:3px">♥ ${t.likeCount || 0}　💬 ${t.commentCount || 0}</small></span>
   </button></div>`;
 }
+function curList() { return S.listTab === 'public' ? S.publicTrips : S.listTab === 'shared' ? S.sharedTrips : S.trips; }
 function listHtml() {
-  const pub = S.listTab === 'public';
-  const tabs = `<div class="tabs" role="tablist">
-    <button class="tab ${pub ? '' : 'on'}" role="tab" aria-selected="${!pub}" data-act="listTab" data-tab="mine">自分のトリップ</button>
-    <button class="tab ${pub ? 'on' : ''}" role="tab" aria-selected="${pub}" data-act="listTab" data-tab="public">みんなの公開ルート</button></div>`;
-  const list = pub ? S.publicTrips : S.trips;
+  const lt = S.listTab;
+  const pub = lt !== 'mine';
+  const tb = (k, l) => `<button class="tab ${lt === k ? 'on' : ''}" role="tab" aria-selected="${lt === k}" data-act="listTab" data-tab="${k}">${l}</button>`;
+  const tabs = `<div class="tabs" role="tablist">${tb('mine', '自分のトリップ')}${tb('shared', '共有された')}${tb('public', 'みんなの公開')}</div>`;
+  const list = curList();
   let content;
   if (S.loading && !list.length) content = '<p class="muted">読み込み中…</p>';
-  else if (pub && !list.length) content = `<div class="empty"><p class="font-bold">公開されたルートはまだありません</p>
-      <p class="text-sm mt-1">自分のトリップの公開範囲を「会員に公開」にすると、ここに並びます。</p></div>`;
+  else if (lt === 'public' && !list.length) content = `<div class="empty"><p class="font-bold">公開されたルートはまだありません</p>
+      <p class="text-sm mt-1">自分のトリップの公開範囲を「会員全体に公開」にすると、ここに並びます。</p></div>`;
+  else if (lt === 'shared' && !list.length) content = `<div class="empty"><p class="font-bold">あなたに共有されたトリップはまだありません</p>
+      <p class="text-sm mt-1">家族や友人が、あなたを「共有相手」に登録してトリップを公開すると、ここに並びます。相手にはあなたの登録メールアドレスを伝えてください。</p></div>`;
   else if (!list.length) content = `<div class="empty"><p class="font-bold">まだトリップがありません</p>
       <p class="text-sm mt-1">走行ログ（GPX・KML・GeoJSON）や、アクティビティマップの画像から始められます。写真やピンだけでも記録できます。</p>
       <button class="btn btn-route btn-sm mt-3" data-act="newTrip">＋ 新しいトリップ</button></div>`;
   else content = `<div class="trips">${list.map(t => tripItemHtml(t, pub)).join('')}</div>`;
-  const note = pub ? '<p class="hint mb-3">ログインしている会員が公開したルートです。閲覧のみできます。</p>'
-    : '<div class="flex justify-end gap-2 mb-3"><button class="btn btn-ghost btn-sm" data-act="bulkImport">📂 GPXをまとめて取り込む</button><button class="btn btn-ghost btn-sm md:hidden" data-act="newTrip">＋ 新規</button></div>';
+  const note = lt === 'public' ? '<p class="hint mb-3">会員全体に公開されたルートです。閲覧・いいね・コメントができます。</p>'
+    : lt === 'shared' ? '<p class="hint mb-3">家族や友人が、あなたを指定して公開したトリップです。閲覧・いいね・コメントができます。</p>'
+    : `<div class="flex flex-wrap justify-end gap-2 mb-3"><button class="btn btn-ghost btn-sm" data-act="shareOverview">🔐 公開設定の一覧</button><button class="btn btn-ghost btn-sm" data-act="bulkImport">📂 GPXをまとめて取り込む</button><button class="btn btn-ghost btn-sm md:hidden" data-act="newTrip">＋ 新規</button></div>`;
   const withRoute = list.filter(t => t.hasRoute);
   const allOn = withRoute.length > 0 && withRoute.every(t => S.sel.includes(t.tripId));
   const selBar = list.length ? `<div class="sel-bar">
@@ -1214,10 +1301,12 @@ function tripHtml() {
   const t = S.trip;
   const dates = t.startDate ? fmtDate(t.startDate) + (t.endDate && t.endDate !== t.startDate ? ' 〜 ' + fmtDate(t.endDate) : '') : '日付なし';
   const own = canEdit();
-  return `<button class="back" data-act="backList">‹ ${S.listTab === 'public' ? 'みんなの公開ルート' : 'トリップ一覧'}</button>
+  const backLbl = { public: 'みんなの公開', shared: '共有されたトリップ', mine: 'トリップ一覧' }[S.listTab] || 'トリップ一覧';
+  const otherBadge = t.visibility === 'selected' ? '<span class="vis sel">👪 あなたに共有</span>' : '<span class="vis pub">👥 会員全体に公開</span>';
+  return `<button class="back" data-act="backList">‹ ${backLbl}</button>
     <h2 class="ttl">${esc(t.title)}</h2>
     <div class="meta"><span>${TYPE_ICON[t.tripType] || ''} ${TYPE_LABEL[t.tripType] || ''}</span><span>${esc(dates)}</span>${t.routeName ? `<span>${esc(t.routeName)}</span>` : ''}</div>
-    <div class="meta" style="margin-top:8px;align-items:center">${own ? visBadge(t, true) : `<span class="owner">${esc(t.ownerName || '')} さんのトリップ</span><span class="vis pub">👥 会員に公開</span>`}
+    <div class="meta" style="margin-top:8px;align-items:center">${own ? visBadge(t, true) : `<span class="owner">${esc(t.ownerName || '')} さんのトリップ</span>${otherBadge}`}
       <button class="like ${S.liked ? 'on' : ''}" data-act="like" aria-pressed="${S.liked}" aria-label="いいね"><span class="hrt" aria-hidden="true">${S.liked ? '♥' : '♡'}</span>いいね<b>${S.likeCount}</b></button></div>
     ${t.description ? `<p class="desc">${esc(t.description)}</p>` : ''}
     ${meterHtml()}
@@ -1231,6 +1320,7 @@ function tripHtml() {
       ${S.route ? `<button class="lnk" data-act="togglePlay">ルートを再生</button><button class="lnk" data-act="exportGpx">GPXで書き出す</button><button class="lnk" data-act="copyShare">共有コードをコピー</button>` : ''}
       ${own ? `<button class="lnk" data-act="editTrip">トリップを編集</button><button class="lnk danger" data-act="deleteTrip">削除</button>` : ''}
     </div>
+    ${shareBarHtml(t, own)}
     <div class="tabs mt-5" role="tablist">
       <button class="tab ${S.tab === 'timeline' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'timeline'}" data-act="tab" data-tab="timeline">タイムライン</button>
       <button class="tab ${S.tab === 'ai' ? 'on' : ''}" role="tab" aria-selected="${S.tab === 'ai'}" data-act="tab" data-tab="ai">${own ? 'AIでまとめる' : 'まとめ文'}</button>
@@ -1246,7 +1336,8 @@ function commentsHtml() {
       <div class="cm-h"><span class="cm-a">${esc(c.authorName)}${c.isMine ? '<small>（自分）</small>' : ''}</span>
         <span class="cm-t num">${esc(fmtTime(c.createdAt))}${c.edited ? '<span style="font-family:inherit;font-size:11px"> 編集済み</span>' : ''}</span></div>
       ${editing ? `<form class="cm-edit mt-2" data-id="${esc(c.commentId)}" novalidate>
-          <textarea class="inp" name="body" rows="3" maxlength="1000" required aria-label="コメントを修正">${esc(c.body)}</textarea>
+          <textarea class="inp" id="f_cmtEdit" name="body" rows="3" maxlength="1000" required aria-label="コメントを修正">${esc(c.body)}</textarea>
+          <div class="ta-tools">${micBtn('f_cmtEdit')}</div>
           <p class="ferr"></p>
           <div class="flex gap-2 justify-end"><button type="button" class="btn btn-ghost btn-sm" data-act="cmtCancel">やめる</button><button type="submit" class="btn btn-route btn-sm">保存する</button></div>
         </form>`
@@ -1258,6 +1349,7 @@ function commentsHtml() {
     <form id="fCmt" class="cm-form" novalidate>
       <label for="f_cmt" class="text-sm font-bold">コメントを書く</label>
       <textarea id="f_cmt" class="inp mt-2" name="body" rows="3" maxlength="1000" required placeholder="感想や、走ってみたい・行ってみたい気持ちを伝えましょう">${esc(S.cmtDraft)}</textarea>
+      <div class="ta-tools">${micBtn('f_cmt')}</div>
       <p class="ferr"></p>
       <div class="flex justify-between items-center"><span class="hint" style="margin:0">1000文字まで</span><button type="submit" class="btn btn-route btn-sm">投稿する</button></div>
     </form>`;
@@ -1355,7 +1447,7 @@ function aiHtml() {
     if (!has.length) return '<div class="empty"><p>まとめ文はまだありません。</p></div>';
     return has.map(([mode, f, title]) => `<section class="ai"><h4>${title}</h4>
       <textarea id="ai_${mode}" class="inp ai-out" rows="8" readonly>${esc(t[f])}</textarea>
-      <div class="text-right"><button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div></section>`).join('');
+      <div class="ta-tools">${spkBtn('ai_' + mode)}<button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div></section>`).join('');
   }
   return `<label class="chk"><input type="checkbox" id="aiPhotos" ${S.aiPhotos ? 'checked' : ''}> 写真に写っているものも読み取る（最大6枚）</label>
     ${!S.spots.length && !t.hasRoute ? '<p class="note" style="margin:0 0 12px">ルートやスポットを登録すると、その内容に沿った文章になります。</p>' : ''}
@@ -1363,7 +1455,7 @@ function aiHtml() {
       <div class="ai-h"><div><h4>${title}</h4><p>${desc}</p></div>
         <button class="btn btn-ink btn-sm" data-act="aiGen" data-mode="${mode}">${t[f] ? '作り直す' : '生成する'}</button></div>
       ${t[f] ? `<textarea id="ai_${mode}" class="inp ai-out" rows="8">${esc(t[f])}</textarea>
-        <div class="text-right"><button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div>` : ''}
+        <div class="ta-tools">${spkBtn('ai_' + mode)}<button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div>` : ''}
     </section>`).join('')}
     <p class="hint">生成された文章は自由に書き直してからコピーできます。事実と違う点がないか確認してから使ってください。</p>`;
 }
@@ -1381,6 +1473,7 @@ function openModal(html, opt = {}) {
   if (!opt.peek && previewLayer) previewLayer.clearLayers();
   const f = root.querySelector('input:not([type=hidden]):not([type=file]), textarea, button');
   if (f && !isMobile()) setTimeout(() => f.focus(), 30);
+  refreshVoiceUi();
 }
 function closeModal(force) {
   if (modalLocked && !force) return;
@@ -1448,10 +1541,14 @@ function renderAuthBody(tab) {
         <li>新しいパスワードを設定して完了</li>
       </ol>
       <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required value="${esc(S.lastEmail)}"></div>
-      <div class="field"><label for="f_name">表示名</label><input class="inp" id="f_name" name="displayName" maxlength="30" autocomplete="nickname" required><p class="hint">30文字まで。あとから変更できます</p></div>
-      <p class="ferr"></p><button type="submit" class="btn btn-route w-full">仮パスワードを受け取る</button></form>`;
+      <div class="field"><label for="f_name">表示名</label><input class="inp" id="f_name" name="displayName" maxlength="30" autocomplete="nickname" required><p class="hint">30文字まで。あとから変更できます。共有相手やコメント欄に表示されます</p></div>
+      <div class="field"><span class="lbl">注意事項・免責事項（最後までお読みください）</span>${termsHtml()}${agreeHtml()}</div>
+      <p class="ferr"></p><button type="submit" class="btn btn-route w-full" id="regGo" disabled>同意して仮パスワードを受け取る</button></form>`;
+    bindAgree($('#fReg'), $('#regGo'));
     bindForm($('#fReg'), async d => {
-      const r = await api('register', { email: d.email, displayName: d.displayName });
+      const ag = agreeValues(d);
+      if (!AGREE_ITEMS.every(a => ag[a.k])) throw new Error('すべての項目にチェックを入れてください');
+      const r = await api('register', { email: d.email, displayName: d.displayName, agreements: ag });
       S.lastEmail = r.email || d.email.trim().toLowerCase();
       $('#authBody').innerHTML = `<p style="line-height:1.8">${esc(r.message)}</p>
         <p class="hint mt-2">数分たっても届かない場合は、迷惑メールフォルダを確認してください。</p>
@@ -1460,7 +1557,6 @@ function renderAuthBody(tab) {
   } else {
     el.innerHTML = `<form id="fForgot" novalidate>
       <p class="text-sm mb-4" style="line-height:1.7">登録したメールアドレスに仮パスワードを送ります。仮パスワードでログインしたあと、新しいパスワードを設定してください。</p>
-      <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required></div>
       <div class="field"><label for="f_email">メールアドレス</label><input class="inp" id="f_email" type="email" name="email" autocomplete="email" required value="${esc(S.lastEmail)}"></div>
       <p class="ferr"></p><button type="submit" class="btn btn-route w-full">仮パスワードを送る</button></form>`;
     bindForm($('#fForgot'), async d => {
@@ -1480,13 +1576,24 @@ function afterLogin(r, msg) {
   closeModal(true);
   setRoute(null);
   renderAll();
-  loadTrips();
-  if (r.user.mustChangePassword) openChangePw(true);
-  else toast(msg);
+  if (!r.user.mustChangePassword && !r.user.needsAgreement) toast(msg);
+  postAuthFlow();
+}
+/* ログイン後の流れ：仮パスワード変更 → 同意 → 一覧の読み込み → 共有リンクのトリップを開く */
+async function postAuthFlow() {
+  if (!S.user) return;
+  if (S.user.mustChangePassword) { openChangePw(true); return; }
+  if (S.user.needsAgreement) { openAgree(); return; }
+  await loadTrips();
+  if (S.pendingTrip) {
+    const id = S.pendingTrip; S.pendingTrip = null;
+    await openTrip(id);
+  }
 }
 function logout(expired, msg) {
   S.token = null; S.user = null; S.trips = []; S.trip = null; S.spots = []; S.tempPw = '';
   S.publicTrips = []; S.publicLoaded = false; S.listTab = 'mine';
+  S.sharedTrips = []; S.sharedLoaded = false; S.contacts = null; stopDict(); stopSpeak();
   S.routeCache = {}; if (multiLayer) multiLayer.clearLayers();
   ls.del('wadachi.token'); ls.del('wadachi.user');
   endPick();
@@ -1514,7 +1621,8 @@ function openChangePw(forced) {
     S.tempPw = '';
     closeModal(true);
     renderHeader();
-    toast(forced ? 'パスワードを設定しました。最初のトリップを作りましょう' : 'パスワードを変更しました');
+    toast(forced ? 'パスワードを設定しました' : 'パスワードを変更しました');
+    if (forced) postAuthFlow();
   });
 }
 function openEditName() {
@@ -1541,21 +1649,11 @@ async function loadPublic() {
   catch (e) { if (e.code !== 'AUTH') toast(e.message, 'err'); }
   finally { S.loading = false; if (!S.trip) renderPanel(); }
 }
-async function toggleVisibility() {
-  const t = S.trip;
-  const next = t.visibility === 'members' ? 'private' : 'members';
-  const msg = next === 'members'
-    ? 'このトリップを会員に公開します。ルート・スポット・写真・動画・メモ・まとめ文が、ログインしている会員に見えるようになります。よろしいですか？'
-    : 'このトリップを非公開（自分だけ）に戻しますか？';
-  if (!confirm(msg)) return;
-  try {
-    const r = await api('saveTrip', { trip: { tripId: t.tripId, title: t.title, tripType: t.tripType, startDate: t.startDate, endDate: t.endDate, description: t.description, visibility: next }, spotCount: S.spots.length });
-    S.trip = { ...S.trip, ...r.trip };
-    syncTripInList(S.trip);
-    S.publicLoaded = false;
-    renderPanel();
-    toast(next === 'members' ? '会員に公開しました' : '非公開にしました');
-  } catch (e) { toast(e.message, 'err'); }
+async function loadShared() {
+  S.loading = true; renderPanel();
+  try { const r = await api('listSharedTrips'); S.sharedTrips = r.trips; S.sharedLoaded = true; }
+  catch (e) { if (e.code !== 'AUTH') toast(e.message, 'err'); }
+  finally { S.loading = false; if (!S.trip) renderPanel(); }
 }
 async function openTrip(id) {
   endPick();
@@ -1570,11 +1668,12 @@ async function openTrip(id) {
     history.replaceState(null, '', '?trip=' + encodeURIComponent(id));
   } catch (e) {
     toast(e.message, 'err');
+    if (e.code === 'NOT_FOUND') history.replaceState(null, '', location.pathname);
     if (S.user) { S.trip = null; renderPanel(); }
   }
 }
 function closeTrip() {
-  endPick();
+  endPick(); stopSpeak(); stopDict();
   S.trip = null; S.spots = [];
   S.comments = []; S.liked = false; S.likeCount = 0; S.editCmt = null; S.cmtDraft = '';
   setRoute(null); drawSpots(); renderPanel();
@@ -1585,8 +1684,11 @@ function syncTripInList(t) {
   const i = S.trips.findIndex(x => x.tripId === t.tripId);
   if (i >= 0) S.trips[i] = { ...S.trips[i], ...t }; else S.trips.unshift(t);
 }
-function openTripForm(trip, pendingRoute) {
+async function openTripForm(trip, pendingRoute) {
+  try { await ensureContacts(); } catch (e) { /* 共有相手が読めなくても続ける */ }
   const t = trip || {};
+  const vis = VIS_KEYS.includes(t.visibility) ? t.visibility : 'private';
+  const ids = new Set(t.shareIds || []);
   const isNew = !t.tripId;
   S.pendingRoute = pendingRoute || null;
   const pr = S.pendingRoute;
@@ -1602,11 +1704,11 @@ function openTripForm(trip, pendingRoute) {
         <div class="field"><label for="f_sd">出発日</label><input class="inp" id="f_sd" type="date" name="startDate" value="${esc(defStart)}"></div>
         <div class="field"><label for="f_ed">帰着日</label><input class="inp" id="f_ed" type="date" name="endDate" value="${esc(t.endDate || '')}"></div>
       </div>
-      <div class="field"><span class="lbl">公開範囲</span><div class="seg">
-        <label><input type="radio" name="visibility" value="private" ${t.visibility === 'members' ? '' : 'checked'}>🔒 非公開（自分だけ）</label>
-        <label><input type="radio" name="visibility" value="members" ${t.visibility === 'members' ? 'checked' : ''}>👥 会員に公開</label>
-      </div><p class="hint">会員に公開すると、ログインした会員がルート・スポット・写真・動画・メモ・まとめ文を見られます（編集はできません）。</p></div>
-      <div class="field"><label for="f_desc">メモ</label><textarea class="inp" id="f_desc" name="description" rows="3" maxlength="2000" placeholder="一緒に行った人、天気、車体のことなど">${esc(t.description || '')}</textarea></div>
+      <div class="field"><span class="lbl">公開範囲</span>${visSegHtml('visibility', vis)}
+        <div id="tfShare" class="${vis === 'selected' ? '' : 'hidden'}">${contactPickHtml(ids, 'tfc')}</div>
+        <p class="hint">最初は「非公開」です。公開すると、相手はルート・スポット・写真・動画・メモ・まとめ文を見られます（編集はできません）。</p></div>
+      <div class="field"><label for="f_desc">メモ</label><textarea class="inp" id="f_desc" name="description" rows="3" maxlength="2000" placeholder="一緒に行った人、天気、車体のことなど">${esc(t.description || '')}</textarea>
+        <div class="ta-tools">${micBtn('f_desc')}</div></div>
       ${isNew ? `<div class="field"><span class="lbl">ルート（あとからでも追加できます）</span>
         <label class="drop small" data-drop="trip"><span id="tripRouteLbl">${pr ? '読み込み済み：' + esc(pr.name || 'ルート') + '（' + fmtKm(computeStats(pr.points).distanceKm) + ' km）' : 'GPX・KML・GeoJSON をドロップ、またはタップして選ぶ'}</span>
         <input type="file" id="tripRouteFile" accept=".gpx,.kml,.geojson,.json" hidden></label></div>` : ''}
@@ -1614,8 +1716,13 @@ function openTripForm(trip, pendingRoute) {
     </form>`);
   const rf = $('#tripRouteFile');
   if (rf) rf.addEventListener('change', () => { if (rf.files[0]) setTripFormRoute(rf.files[0]); });
-  bindForm($('#fTrip'), async d => {
-    const r = await api('saveTrip', { trip: { tripId: t.tripId || '', title: d.title, tripType: d.tripType, startDate: d.startDate, endDate: d.endDate, description: d.description, visibility: d.visibility }, spotCount: isNew ? 0 : S.spots.length });
+  $$('#fTrip input[name=visibility]').forEach(r => r.addEventListener('change', () => { $('#tfShare').classList.toggle('hidden', r.value !== 'selected' || !r.checked); }));
+  bindForm($('#fTrip'), async (d, form) => {
+    const shareIds = $$('input[data-tfc]:checked', form).map(x => x.dataset.tfc);
+    if (d.visibility === 'selected' && !shareIds.length && !confirm('共有する相手が選ばれていません。このままでは誰にも見えません（非公開と同じ）。保存しますか？')) return;
+    const payload = { trip: { tripId: t.tripId || '', title: d.title, tripType: d.tripType, startDate: d.startDate, endDate: d.endDate, description: d.description, visibility: d.visibility }, spotCount: isNew ? 0 : S.spots.length };
+    if (d.visibility === 'selected') payload.shareIds = shareIds;
+    const r = await api('saveTrip', payload);
     let trip = r.trip;
     if (isNew && S.pendingRoute) {
       const p = S.pendingRoute, st = computeStats(p.points);
@@ -1624,7 +1731,7 @@ function openTripForm(trip, pendingRoute) {
     }
     S.pendingRoute = null;
     syncTripInList(trip);
-    S.publicLoaded = false;
+    S.publicLoaded = false; S.sharedLoaded = false;
     closeModal();
     if (isNew) { S.listTab = 'mine'; await openTrip(trip.tripId); toast('トリップを作成しました'); }
     else { S.trip = { ...S.trip, ...trip }; renderPanel(); toast('保存しました'); }
@@ -1765,7 +1872,9 @@ async function readRouteImage() {
     let blob = S.imgFile, mime = S.imgFile.type;
     try { blob = await resizeImage(S.imgFile, 1600, 0.9); mime = 'image/jpeg'; } catch (e) { /* 元画像のまま */ }
     const data = await blobToB64(blob);
-    const r = await api('routeFromImage', { data, mimeType: mime, tripType: (S.trip && S.trip.tripType) || 'cycling' });
+    let width = 0, height = 0;
+    try { const bm = await createImageBitmap(blob); width = bm.width; height = bm.height; if (bm.close) bm.close(); } catch (e) { /* 大きさ不明でも続ける */ }
+    const r = await api('routeFromImage', { data, mimeType: mime, width, height, tripType: (S.trip && S.trip.tripType) || 'cycling' });
     modalLocked = false;
     S.imgFile = null;
     S.imgRoute = {
@@ -2111,7 +2220,8 @@ function renderSpotEditor() {
     <form id="fSpot" novalidate>
       <div class="field"><label for="f_st">場所の名前</label><input class="inp" id="f_st" name="title" maxlength="80" placeholder="例：峠の茶屋、道の駅" value="${esc(sp.title)}"></div>
       <div class="field"><label for="f_sa">日時</label><input class="inp" id="f_sa" type="datetime-local" name="takenAt" value="${esc(toLocalInput(sp.takenAt))}"></div>
-      <div class="field"><label for="f_sm">メモ</label><textarea class="inp" id="f_sm" name="memo" rows="4" maxlength="4000" placeholder="食べたもの、景色、道の状態など">${esc(sp.memo)}</textarea></div>
+      <div class="field"><label for="f_sm">メモ</label><textarea class="inp" id="f_sm" name="memo" rows="4" maxlength="4000" placeholder="食べたもの、景色、道の状態など">${esc(sp.memo)}</textarea>
+        <div class="ta-tools">${micBtn('f_sm')}</div></div>
       <p class="text-sm mb-4">位置 <span class="num" style="font-size:15px">${Number(sp.lat).toFixed(5)}, ${Number(sp.lng).toFixed(5)}</span>
         <button type="button" class="lnk ml-2" data-act="repick">地図で選び直す</button></p>
       <div class="field"><span class="lbl">写真・動画</span><div id="edMedia" class="edmedia"></div>
@@ -2249,15 +2359,28 @@ const ACT = {
   sheet: () => {},
   newTrip: () => { if (!S.user) return openAuth('register'); openTripForm(null, null); },
   openTrip: el => openTrip(el.dataset.id),
-  backList: () => { closeTrip(); if (S.listTab === 'public') loadPublic(); else loadTrips(); },
+  backList: () => { closeTrip(); if (S.listTab === 'public') loadPublic(); else if (S.listTab === 'shared') loadShared(); else loadTrips(); },
   listTab: el => {
     S.listTab = el.dataset.tab;
-    if (S.listTab === 'public' && !S.publicLoaded) loadPublic(); else renderPanel();
+    if (S.listTab === 'public' && !S.publicLoaded) loadPublic();
+    else if (S.listTab === 'shared' && !S.sharedLoaded) loadShared();
+    else renderPanel();
   },
-  toggleVis: () => { if (canEdit()) toggleVisibility(); },
+  toggleVis: () => { if (canEdit()) openShareModal(); },
+  help: () => openHelp(),
+  terms: () => openTerms(),
+  contacts: () => openContacts(),
+  shareOverview: () => openOverview(),
+  mic: el => toggleDict(el),
+  speak: el => { const t = $('#' + el.dataset.target); if (t) speakText(t.value, el.dataset.target); },
+  shareLine: () => shareTrip('line'),
+  shareCopy: () => shareTrip('copy'),
+  shareNative: () => shareTrip('native'),
+  ovLine: el => shareTrip('line', S.ov && S.ov.trips.find(x => x.tripId === el.dataset.id)),
+  inviteLine: () => openLine(`わだちログで、走ったルートや写真を共有しませんか？\n会員登録（無料）はこちら：\n${APP_URL}\n登録したメールアドレスを教えてください。共有相手に追加します。`),
   bulkImport: () => openBulkImport(),
   selAll: () => {
-    const list = (S.listTab === 'public' ? S.publicTrips : S.trips).filter(t => t.hasRoute).map(t => t.tripId);
+    const list = curList().filter(t => t.hasRoute).map(t => t.tripId);
     setSelected(list, true, true);
   },
   selNone: () => setSelected([...S.sel], false, false),
@@ -2349,6 +2472,508 @@ const ACT = {
 };
 function runAct(el, e) { const fn = ACT[el.dataset.act]; if (fn) fn(el, e); }
 
+/* ============================================================
+ * v2：バージョン・同意・使い方
+ * ============================================================ */
+const VIS_KEYS = ['private', 'selected', 'members'];
+function verText() { return `わだちログ 画面 v${APP_VERSION}${S.serverVersion ? ' ／ サーバー v' + S.serverVersion : ''}`; }
+
+const AGREE_ITEMS = [
+  { k: 'notice', l: '「ご利用にあたっての注意」を読み、内容を理解しました' },
+  { k: 'disclaimer', l: '「免責事項」に同意します' },
+  { k: 'selfResponsibility', l: '走行・運転・外出や投稿・共有は、自己責任で行います' },
+  { k: 'dispute', l: '会員どうしのトラブルは、当事者間で解決します' }
+];
+function termsHtml(full) {
+  return `<div class="terms ${full ? 'full' : ''}" tabindex="0" aria-label="注意事項・免責事項">
+    <h5>ご利用にあたっての注意</h5><ul>
+      <li>走行中・運転中にスマートフォンを操作しないでください。記録や入力は、安全な場所に止まってから行ってください。</li>
+      <li>写真の撮影地点や、ルートの出発地・到着地から、自宅などの場所が分かることがあります。公開する前に必ず確認してください。</li>
+      <li>写真・動画は Google ドライブに保存され、URLを知っている人は会員でなくても開ける設定です。人に見られて困る写真は登録しないでください。</li>
+      <li>他人が写った写真や他人の個人情報、著作権・肖像権を侵害する内容は投稿しないでください。</li>
+      <li>AIが作る文章や、画像から読み取った経路には誤りが含まれることがあります。確認してから使ってください。</li>
+      <li>このサービスは個人が無償で運営しています。予告なく内容の変更・停止を行うことがあります。大切な記録は「GPXで書き出す」などで手元にも保存してください。</li></ul>
+    <h5>免責事項</h5><ul>
+      <li>ルート・距離・標高・地図・AIの文章などの情報について、正確さ・完全さ・有用性は保証しません。</li>
+      <li>このサービスの利用、または利用できなかったことによって生じた損害（事故・けが・道迷い・データの消失・端末の不具合など）について、運営者は責任を負いません。</li>
+      <li>地図・Google ドライブ・AI（Gemini）・経路計算・LINE などの外部サービスの不具合や仕様変更による影響についても同様です。</li></ul>
+    <h5>自己責任</h5><ul>
+      <li>走行・運転・外出は、交通ルールと現地のきまりを守り、天候・体調・道路の状況をご自身で判断して行ってください。</li>
+      <li>公開範囲の設定、共有相手の選択、投稿の内容は、ご自身の判断と責任で行ってください。</li></ul>
+    <h5>当事者間での問題解決</h5><ul>
+      <li>会員どうし（共有相手、コメント・いいねのやり取りを含む）で生じたトラブルは、当事者間で話し合って解決してください。運営者は仲裁・調停を行いません。</li>
+      <li>法令や公序良俗に反する投稿、他の会員への迷惑行為があった場合、運営者の判断で投稿の削除や利用の停止を行うことがあります。</li></ul>
+  </div>`;
+}
+function agreeHtml() {
+  return `<div class="agree">${AGREE_ITEMS.map(a => `<label><input type="checkbox" name="ag_${a.k}" data-ag="1"><span>${a.l}</span></label>`).join('')}
+    <label class="all"><input type="checkbox" data-agall="1"><span>すべてに同意する</span></label></div>`;
+}
+function agreeValues(d) { const o = {}; AGREE_ITEMS.forEach(a => { o[a.k] = d['ag_' + a.k] === 'on'; }); return o; }
+function bindAgree(form, btn) {
+  const items = $$('input[data-ag]', form), all = $('input[data-agall]', form);
+  const sync = () => { const ok = items.every(x => x.checked); all.checked = ok; if (btn) btn.disabled = !ok; };
+  items.forEach(x => x.addEventListener('change', sync));
+  all.addEventListener('change', () => { items.forEach(x => { x.checked = all.checked; }); sync(); });
+  sync();
+}
+function openAgree() {
+  if ($('#fAgree')) return;
+  openModal(`<div class="mhead"><h3>ご利用前の確認</h3></div>
+    <p class="text-sm mb-3" style="line-height:1.7">わだちログを使うには、次の内容への同意が必要です（内容を見直したときも、あらためて確認をお願いしています）。</p>
+    <form id="fAgree" novalidate>${termsHtml()}${agreeHtml()}
+      <p class="ferr"></p><button type="submit" id="agGo" class="btn btn-route w-full" disabled>同意して続ける</button>
+      <div class="text-center mt-3"><button type="button" class="lnk" data-act="logout">ログアウト</button></div></form>`, { locked: true });
+  bindAgree($('#fAgree'), $('#agGo'));
+  bindForm($('#fAgree'), async d => {
+    const r = await api('agreeTerms', { agreements: agreeValues(d) });
+    setSession(null, r.user);
+    closeModal(true);
+    toast('ありがとうございます。わだちログへようこそ');
+    postAuthFlow();
+  });
+}
+function openTerms() {
+  openModal(`<div class="mhead"><h3>注意事項・免責事項</h3>${X_BTN}</div>${termsHtml(true)}<p class="ver">${esc(verText())}</p>`, { wide: true });
+}
+function openHelp() {
+  const sec = (title, body, open) => `<details ${open ? 'open' : ''}><summary>${title}</summary><div class="hb">${body}</div></details>`;
+  openModal(`<div class="mhead"><h3>使い方</h3>${X_BTN}</div><div class="help">
+    ${sec('はじめる（会員登録・ログイン）', `<ol>
+      <li>「新規登録」でメールアドレスと表示名を入れ、注意事項・免責事項を読んで4つの項目にチェックします。</li>
+      <li>メールで届いた<b>仮パスワード</b>でログインし、自分で決めた新しいパスワードを設定します。</li>
+      <li>パスワードを忘れたときは、ログイン画面の「パスワードを忘れた」から仮パスワードを再発行できます。</li></ol>
+      <p class="mt-2">登録しなくても、GPXなどのファイルを地図に落とせば、距離・標高の確認と再生だけは試せます（保存はされません）。</p>`, true)}
+    ${sec('トリップを作る・ルートを読み込む', `<ul>
+      <li>右上の<b>＋ 新しいトリップ</b>でタイトル・種類・日付を入れて作成します。GPX・KML・GeoJSON を一緒に選ぶと距離や日付が自動で入ります。</li>
+      <li>トリップ画面の<b>ルートを読み込む</b>では「ファイル」「URL」「画像から」「テキスト」を選べます。</li>
+      <li><b>画像から</b>：記録アプリのアクティビティマップの画面写真から、AIが線と地名を読み取って経路にします。「道路に沿わせる」「向きを反転」で整えてから登録します。</li>
+      <li>一覧の<b>GPXをまとめて取り込む</b>で、複数のファイルを一度に登録できます。</li></ul>`)}
+    ${sec('写真・動画・ピン', `<ul>
+      <li><b>写真・動画を追加</b>：位置情報つきの写真は撮影地点に自動でピンが立ちます。位置情報がないものは地図をタップして場所を決めます。</li>
+      <li><b>ピンを打つ</b>：地図をタップして、メモだけのスポットも作れます。</li>
+      <li>スポットの「編集」で名前・日時・メモ・写真を直せます。</li></ul>`)}
+    ${sec('再生・地図に重ねて表示', `<ul>
+      <li><b>ルートを再生</b>でルートを走るアニメーションを表示します。写真のある地点で止まって写真を見せます。</li>
+      <li>標高グラフをなぞると、地図上にその地点を表示します。</li>
+      <li>一覧のチェックボックスで、複数のルートを地図に重ねて表示できます。</li></ul>`)}
+    ${sec('音声入力・読み上げ', `<ul>
+      <li>メモやコメント欄の<b>🎤 音声入力</b>を押すと、話した言葉が文字になります。言葉と言葉の間があいても聞き取りを続けます。終わったらもう一度押して止めます（3分間声がないと自動で止まります）。</li>
+      <li>初回はマイクの使用許可を求められます。「許可」を選んでください。対応していないブラウザではボタンが表示されません。</li>
+      <li>AIのまとめ文は<b>🔊 読み上げ</b>で音声で聞けます。</li></ul>`)}
+    ${sec('AIでまとめる', `<ul>
+      <li>トリップ画面の「AIでまとめる」タブで、日誌の要約・見どころ・SNS/ブログ用の文章を作れます。写真の内容も読み取れます。</li>
+      <li>文章は自由に書き直してからコピーできます。事実と違う点がないか確認してください。</li></ul>`)}
+    ${sec('公開範囲（家族・友人にだけ見せる）', `<ul>
+      <li>トリップの公開範囲は3種類です。<b>🔒 非公開</b>（自分だけ・最初はこれ）／<b>👪 指定した会員</b>（選んだ家族・友人だけ）／<b>👥 会員全体</b>（ログインした全会員）。</li>
+      <li>トリップ画面の公開バッジを押すと、その場で公開範囲と相手を変えられます。</li>
+      <li>メニューの<b>公開設定の一覧</b>では、全トリップの公開範囲と相手を一覧で切り替えられます。</li>
+      <li>相手側では、一覧の「共有された」タブに表示されます。</li></ul>`)}
+    ${sec('共有相手（家族・友人）の登録', `<ol>
+      <li>相手にわだちログへ会員登録してもらい、初回ログインまで済ませてもらいます（「未登録の人をLINEで招待」で案内を送れます）。</li>
+      <li>メニューの<b>共有相手（家族・友人）</b>で、相手の登録メールアドレスと呼び名（例：妻、山田さん）を入れて追加します。</li>
+      <li>トリップの公開範囲を「指定した会員」にして、見せたい相手にチェックを入れます。</li></ol>
+      <p class="mt-2">共有相手を外すと、その人に公開していたトリップはすべて見えなくなります。</p>`)}
+    ${sec('LINEなどで知らせる', `<ul>
+      <li>トリップ画面の<b>LINEで送る</b>で、トリップのリンクを LINE のトークに送れます。<b>リンクをコピー</b>や<b>その他のアプリ</b>（メールなど）も使えます。</li>
+      <li>リンクを開いた人は、ログインすると、そのトリップを見られます（見る権限がある場合だけ）。</li>
+      <li>非公開のまま送ろうとすると、先に公開範囲の設定を案内します。</li></ul>`)}
+    ${sec('いいね・コメント', `<ul>
+      <li>見られるトリップには、いいねとコメントができます。コメントの修正は書いた本人、削除は本人とトリップの持ち主ができます。</li></ul>`)}
+    </div>
+    <div class="subacts mt-3"><button class="lnk" data-act="terms">注意事項・免責事項を読む</button></div>
+    <p class="ver">${esc(verText())}</p>`, { wide: true });
+}
+
+/* ============================================================
+ * 音声入力（言葉の間があいても止まらないよう、自動で聞き取りを再開）
+ * ============================================================ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const Dict = { on: false, rec: null, ta: null, base: '', lastHeard: 0, timer: null };
+function micBtn(id) {
+  return SR ? `<button type="button" class="mic" data-act="mic" data-target="${id}" aria-pressed="false">🎤 音声入力</button>` : '';
+}
+function toggleDict(btn) {
+  const ta = document.getElementById(btn.dataset.target);
+  if (!ta) return;
+  if (Dict.on) { const same = Dict.ta === ta; stopDict(); if (same) return; }
+  stopSpeak();
+  Dict.on = true; Dict.ta = ta; Dict.base = ta.value; Dict.lastHeard = Date.now();
+  runRec();
+  Dict.timer = setInterval(() => {
+    if (!Dict.ta || !Dict.ta.isConnected) { stopDict(); return; }
+    if (Date.now() - Dict.lastHeard > 180000) { stopDict(); toast('3分間声が聞こえなかったので、音声入力を止めました'); }
+  }, 1000);
+  refreshVoiceUi();
+  toast('聞き取りを始めました。話し終わったら「止める」を押してください');
+}
+function setDictText(v) {
+  const ta = Dict.ta;
+  if (!ta || !ta.isConnected) return;
+  const max = Number(ta.getAttribute('maxlength')) || 0;
+  ta.value = max ? v.slice(0, max) : v;
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  ta.scrollTop = ta.scrollHeight;
+}
+function runRec() {
+  let r;
+  try { r = new SR(); } catch (e) { stopDict(); toast('この端末では音声入力を使えません', 'err'); return; }
+  r.lang = 'ja-JP';
+  r.continuous = !IS_ANDROID; // Android は連続モードで文字が重複するため、1回ずつ自動再開する
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+  let fin = '';
+  r.onresult = e => {
+    let f = '', it = '';
+    for (let i = 0; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) f += t; else it += t;
+    }
+    fin = f;
+    Dict.lastHeard = Date.now();
+    setDictText(Dict.base + f + it);
+  };
+  r.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { stopDict(); toast('マイクの使用が許可されていません。ブラウザの設定でマイクを許可してください', 'err'); }
+    else if (e.error === 'audio-capture') { stopDict(); toast('マイクが見つかりません', 'err'); }
+    // no-speech（無音）・network・aborted は onend で聞き取りを再開する
+  };
+  r.onend = () => {
+    if (Dict.rec !== r) return;
+    Dict.base = Dict.base + fin;
+    setDictText(Dict.base);
+    if (Dict.on) setTimeout(() => { if (Dict.on && Dict.rec === r) runRec(); }, 200);
+  };
+  Dict.rec = r;
+  try { r.start(); }
+  catch (e) { setTimeout(() => { if (Dict.on && Dict.rec === r) runRec(); }, 600); }
+}
+function stopDict() {
+  const r = Dict.rec;
+  Dict.on = false; Dict.rec = null;
+  clearInterval(Dict.timer); Dict.timer = null;
+  if (r) { try { r.stop(); } catch (e) { /* 停止済み */ } }
+  Dict.ta = null;
+  refreshVoiceUi();
+}
+
+/* ============================================================
+ * 読み上げ（端末の音声合成）
+ * ============================================================ */
+const TTS = { id: null };
+function spkBtn(id) { return 'speechSynthesis' in window ? `<button type="button" class="spk" data-act="speak" data-target="${id}">🔊 読み上げ</button>` : ''; }
+function cleanForSpeech(s) {
+  const meta = /(読み上げ|朗読|ナレーション|音読|口調で|トーンで|声で).{0,20}(ください|下さい|します)|^(以下|下記)(は|に|が).{0,40}(です|ます|します)[。:：]?$|^(はい|承知|かしこまり|了解)/;
+  const lines = String(s || '').split('\n').map(x => x.trim());
+  while (lines.length && (!lines[0] || meta.test(lines[0]))) lines.shift();
+  return lines.join('\n')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/#(\S+)/g, '$1')
+    .replace(/[【】＊*＃]/g, ' ')
+    .replace(/^・/gm, '')
+    .trim();
+}
+function speakText(text, id) {
+  if (!('speechSynthesis' in window)) { toast('この端末は読み上げに対応していません', 'err'); return; }
+  const same = TTS.id === id;
+  stopSpeak();
+  if (same) return;
+  stopDict();
+  const clean = cleanForSpeech(text);
+  if (!clean) return;
+  const parts = [];
+  clean.split(/(?<=[。！？!?\n])/).forEach(p => {
+    p = p.trim(); if (!p) return;
+    if (parts.length && (parts[parts.length - 1] + p).length < 120) parts[parts.length - 1] += p; else parts.push(p);
+  });
+  const voice = speechSynthesis.getVoices().find(v => /^ja/i.test(v.lang));
+  TTS.id = id;
+  parts.forEach((p, i) => {
+    const u = new SpeechSynthesisUtterance(p);
+    u.lang = 'ja-JP'; u.rate = 1; if (voice) u.voice = voice;
+    if (i === parts.length - 1) u.onend = () => { if (TTS.id === id) { TTS.id = null; refreshVoiceUi(); } };
+    u.onerror = () => { if (TTS.id === id) { TTS.id = null; refreshVoiceUi(); } };
+    speechSynthesis.speak(u);
+  });
+  refreshVoiceUi();
+}
+function stopSpeak() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  TTS.id = null;
+  refreshVoiceUi();
+}
+function refreshVoiceUi() {
+  $$('[data-act=mic]').forEach(b => {
+    const on = Dict.on && Dict.ta && b.dataset.target === Dict.ta.id;
+    b.classList.toggle('on', !!on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.textContent = on ? '止める（聞き取り中）' : '🎤 音声入力';
+  });
+  $$('[data-act=speak]').forEach(b => {
+    const on = TTS.id === b.dataset.target;
+    b.classList.toggle('on', on); b.textContent = on ? '■ 止める' : '🔊 読み上げ';
+  });
+}
+
+/* ============================================================
+ * 共有相手（家族・友人）と公開範囲
+ * ============================================================ */
+async function ensureContacts(force) {
+  if (S.contacts && !force) return S.contacts;
+  const r = await api('listContacts');
+  S.contacts = r.contacts || [];
+  return S.contacts;
+}
+function contactName(c) { return c.label ? `${c.label}（${c.displayName}）` : c.displayName; }
+function visSegHtml(name, vis) {
+  const o = [['private', '🔒 非公開'], ['selected', '👪 指定した会員'], ['members', '👥 会員全体']];
+  return `<div class="seg">${o.map(([k, l]) => `<label><input type="radio" name="${name}" value="${k}" ${vis === k ? 'checked' : ''}>${l}</label>`).join('')}</div>`;
+}
+function visHelp(v) {
+  return v === 'members' ? 'ログインしている、すべての会員が見られます。'
+    : v === 'selected' ? '下で選んだ家族・友人（登録会員）だけが見られます。'
+    : '自分だけが見られます。リンクを送っても、相手には表示されません。';
+}
+function contactPickHtml(ids, key, inForm = true) {
+  if (!S.contacts) return '<p class="hint">共有相手を読み込めませんでした。</p>';
+  if (!S.contacts.length) return `<p class="note" style="margin-top:8px">共有相手がまだいません。${inForm ? 'メニューの「共有相手（家族・友人）」から、相手の登録メールアドレスを追加してください。' : '下の欄から、相手の登録メールアドレスを追加してください。'}</p>`;
+  return `<div class="clist">${S.contacts.map(c => `<label class="crow"><input type="checkbox" data-${key}="${esc(c.contactId)}" ${ids.has(c.contactId) ? 'checked' : ''}>
+    <span class="cn">${esc(contactName(c))}<small>${esc(c.email)}</small></span></label>`).join('')}</div>`;
+}
+function addContactFormHtml(id) {
+  return `<form id="${id}" class="mt-3" novalidate><p class="text-sm font-bold mb-2">共有相手を追加</p>
+    <div class="flex gap-2"><input class="inp" name="email" type="email" required autocomplete="off" placeholder="相手の登録メールアドレス" aria-label="相手の登録メールアドレス">
+      <input class="inp" name="label" maxlength="20" placeholder="呼び名（例 妻）" aria-label="呼び名（自分だけに表示）" style="width:8em;flex:none"></div>
+    <p class="ferr"></p>
+    <div class="flex justify-between items-center gap-2"><button type="button" class="lnk" data-act="inviteLine">未登録の人をLINEで招待</button><button type="submit" class="btn btn-ink btn-sm">追加する</button></div></form>`;
+}
+function bindAddContact(form, after) {
+  bindForm(form, async d => {
+    const r = await api('addContact', { email: d.email, label: d.label });
+    S.contacts = r.contacts;
+    toast('共有相手を追加しました');
+    after(r.added);
+  });
+}
+/* ---------- トリップ1件の公開範囲（その場で変更） ---------- */
+async function openShareModal() {
+  const t = S.trip;
+  if (!t || !canEdit()) return;
+  S.shareEd = { tripId: t.tripId, vis: VIS_KEYS.includes(t.visibility) ? t.visibility : 'private', ids: new Set(t.shareIds || []) };
+  openModal('<p class="muted">読み込み中…</p>');
+  try { await ensureContacts(); } catch (e) { toast(e.message, 'err'); }
+  renderShareModal();
+}
+function renderShareModal() {
+  const ed = S.shareEd, t = S.trip;
+  openModal(`<div class="mhead"><h3>公開範囲と共有相手</h3>${X_BTN}</div>
+    <p class="text-sm mb-3">「${esc(t.title)}」を見られる人を選びます。</p>
+    ${visSegHtml('shVis', ed.vis)}
+    <p class="hint" style="line-height:1.7">${visHelp(ed.vis)}</p>
+    ${ed.vis === 'selected' ? `<div class="mt-3"><div class="flex justify-between items-center"><span class="text-sm font-bold">公開する相手（${ed.ids.size}人）</span>
+        ${S.contacts && S.contacts.length ? '<span class="flex gap-3"><button class="lnk" data-act="shAll">全員を選ぶ</button><button class="lnk" data-act="shNone">選択を解除</button></span>' : ''}</div>
+      ${contactPickHtml(ed.ids, 'sc', false)}${addContactFormHtml('fShAdd')}</div>` : ''}
+    <p class="ferr" id="shErr"></p>
+    <button class="btn btn-route w-full mt-2" data-act="shSave">この設定で保存</button>`);
+  $$('#modalRoot input[name=shVis]').forEach(r => r.addEventListener('change', () => { ed.vis = r.value; renderShareModal(); }));
+  $$('#modalRoot input[data-sc]').forEach(c => c.addEventListener('change', () => {
+    if (c.checked) ed.ids.add(c.dataset.sc); else ed.ids.delete(c.dataset.sc);
+    const h = $('#modalRoot .font-bold'); if (h) h.textContent = `公開する相手（${ed.ids.size}人）`;
+  }));
+  const f = $('#fShAdd');
+  if (f) bindAddContact(f, id => { if (id) ed.ids.add(id); renderShareModal(); });
+}
+async function saveShareModal(btn) {
+  const ed = S.shareEd;
+  if (!ed || !S.trip || S.trip.tripId !== ed.tripId) return;
+  if (ed.vis === 'selected' && !ed.ids.size && !confirm('相手が選ばれていません。このままでは誰にも見えません（非公開と同じ）。保存しますか？')) return;
+  if (ed.vis === 'members' && S.trip.visibility !== 'members' && !confirm('ログインしているすべての会員に公開します。ルート・スポット・写真・動画・メモ・まとめ文が見えるようになります。よろしいですか？')) return;
+  btn.disabled = true; btn.textContent = '保存しています…';
+  try {
+    const r = await api('setTripSharing', { tripId: ed.tripId, visibility: ed.vis, shareIds: [...ed.ids] });
+    S.trip = { ...S.trip, ...r.trip };
+    syncTripInList(S.trip);
+    S.publicLoaded = false; S.sharedLoaded = false;
+    renderPanel();
+    const v = S.trip.visibility;
+    if (v === 'private' || (v === 'selected' && !(S.trip.shareIds || []).length)) { closeModal(); toast('非公開にしました'); return; }
+    openModal(`<div class="mhead"><h3>保存しました</h3>${X_BTN}</div>
+      <p style="line-height:1.8">${esc(visLabel(S.trip))}${v === 'selected' ? '：' + esc((S.trip.shareNames || []).join('、')) : ''}</p>
+      <p class="text-sm mt-3">相手に、このトリップのリンクを知らせますか？</p>
+      <div class="flex flex-wrap gap-2 mt-3"><button class="btn btn-line" data-act="shareLine">LINEで送る</button><button class="btn btn-ghost" data-act="shareCopy">🔗 リンクをコピー</button>
+      ${navigator.share ? '<button class="btn btn-ghost" data-act="shareNative">その他のアプリ</button>' : ''}<button class="btn btn-ghost" data-act="closeModal">あとで</button></div>`);
+  } catch (e) {
+    const er = $('#shErr'); if (er) er.textContent = e.message; else toast(e.message, 'err');
+    if (btn.isConnected) { btn.disabled = false; btn.textContent = 'この設定で保存'; }
+  }
+}
+/* ---------- 共有相手の管理 ---------- */
+async function openContacts() {
+  openModal('<p class="muted">読み込み中…</p>');
+  try { await ensureContacts(true); } catch (e) { closeModal(); toast(e.message, 'err'); return; }
+  renderContacts();
+}
+function renderContacts() {
+  const list = S.contacts || [];
+  openModal(`<div class="mhead"><h3>共有相手（家族・友人）</h3>${X_BTN}</div>
+    <p class="text-sm" style="line-height:1.7">ここに登録した会員の中から、トリップごとに「見せる相手」を選べます。相手には事前に会員登録（初回ログインまで）をしてもらってください。</p>
+    ${list.length ? `<div class="clist">${list.map(c => `<div class="crow">
+        <input class="inp" data-cl="${esc(c.contactId)}" value="${esc(c.label || '')}" maxlength="20" placeholder="呼び名" aria-label="${esc(c.displayName)} さんの呼び名">
+        <span class="cn">${esc(c.displayName)}<small>${esc(c.email)}</small></span>
+        <button class="lnk danger" data-act="cRemove" data-id="${esc(c.contactId)}">外す</button></div>`).join('')}</div>
+      <p class="hint">呼び名は自分だけに表示されます（入力して欄の外を押すと保存）。</p>`
+      : '<p class="note">共有相手はまだいません。</p>'}
+    ${addContactFormHtml('fCAdd')}
+    <div class="subacts mt-4"><button class="lnk" data-act="shareOverview">公開設定の一覧へ</button></div>`);
+  $$('#modalRoot input[data-cl]').forEach(inp => inp.addEventListener('change', async () => {
+    try { const r = await api('updateContact', { contactId: inp.dataset.cl, label: inp.value }); S.contacts = r.contacts; toast('呼び名を保存しました'); }
+    catch (e) { toast(e.message, 'err'); }
+  }));
+  bindAddContact($('#fCAdd'), () => renderContacts());
+}
+async function removeContact(id) {
+  const c = (S.contacts || []).find(x => x.contactId === id);
+  if (!c || !confirm(`${contactName(c)} さんを共有相手から外しますか？\nこの人に公開していたトリップは、すべて見えなくなります。`)) return;
+  try {
+    const r = await api('removeContact', { contactId: id });
+    S.contacts = r.contacts;
+    S.trips.forEach(t => { if (t.shareIds) { t.shareIds = t.shareIds.filter(x => x !== id); t.shareCount = t.shareIds.length; } });
+    if (S.trip && S.trip.shareIds) { S.trip.shareIds = S.trip.shareIds.filter(x => x !== id); S.trip.shareCount = S.trip.shareIds.length; renderPanel(); }
+    toast('共有相手から外しました');
+    renderContacts();
+  } catch (e) { toast(e.message, 'err'); }
+}
+/* ---------- 公開設定の一覧 ---------- */
+async function openOverview() {
+  if (!S.user) return;
+  openModal('<p class="muted">読み込み中…</p>', { wide: true });
+  try {
+    const r = await api('getShareOverview');
+    S.contacts = r.contacts || [];
+    S.ov = { trips: r.trips || [], q: '', f: 'all' };
+  } catch (e) { closeModal(); toast(e.message, 'err'); return; }
+  renderOverview();
+}
+function renderOverview() {
+  const ov = S.ov;
+  const cnt = k => ov.trips.filter(t => t.visibility === k).length;
+  openModal(`<div class="mhead"><h3>公開設定の一覧</h3>${X_BTN}</div>
+    <p class="text-sm mb-3" style="line-height:1.7">トリップごとに公開範囲を切り替えられます。「指定した会員」にすると、相手の名前を押して見せる人を選べます（変更はすぐに保存されます）。</p>
+    <div class="ov-tools">
+      <input class="inp" id="ovQ" placeholder="タイトルで絞り込み" value="${esc(ov.q)}" style="flex:1;min-width:10em">
+      <select class="inp" id="ovF" style="width:auto">
+        <option value="all">すべて（${ov.trips.length}）</option>
+        <option value="private" ${ov.f === 'private' ? 'selected' : ''}>🔒 非公開（${cnt('private')}）</option>
+        <option value="selected" ${ov.f === 'selected' ? 'selected' : ''}>👪 指定した会員（${cnt('selected')}）</option>
+        <option value="members" ${ov.f === 'members' ? 'selected' : ''}>👥 会員全体（${cnt('members')}）</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" data-act="contacts">共有相手を管理（${S.contacts.length}人）</button>
+    </div>
+    <div id="ovList" class="ov"></div>`, { wide: true });
+  $('#ovQ').addEventListener('input', e => { ov.q = e.target.value; renderOvList(); });
+  $('#ovF').addEventListener('change', e => { ov.f = e.target.value; renderOvList(); });
+  renderOvList();
+}
+function renderOvList() {
+  const ov = S.ov, box = $('#ovList');
+  if (!box) return;
+  const q = ov.q.trim().toLowerCase();
+  const list = ov.trips.filter(t => (ov.f === 'all' || t.visibility === ov.f) && (!q || String(t.title).toLowerCase().includes(q)));
+  if (!ov.trips.length) { box.innerHTML = '<p class="muted">まだトリップがありません。</p>'; return; }
+  if (!list.length) { box.innerHTML = '<p class="muted">条件に合うトリップはありません。</p>'; return; }
+  box.innerHTML = list.map(t => {
+    const ids = new Set(t.shareIds || []);
+    const chips = t.visibility !== 'selected' ? ''
+      : S.contacts.length ? `<div class="chips">${S.contacts.map(c => `<button class="chip ${ids.has(c.contactId) ? 'on' : ''}" data-act="ovChip" data-id="${esc(t.tripId)}" data-c="${esc(c.contactId)}" aria-pressed="${ids.has(c.contactId)}">${esc(c.label || c.displayName)}</button>`).join('')}</div>`
+      : '<p class="note" style="margin:0;grid-column:1/-1">共有相手がいません。「共有相手を管理」から追加してください。</p>';
+    const state = t.visibility === 'selected' ? (ids.size ? `${ids.size}人に公開中` : '相手が未選択のため、誰にも見えません') : t.visibility === 'members' ? '会員全体に公開中' : '自分だけ';
+    return `<div class="ov-row" id="ov_${esc(t.tripId)}">
+      <div class="ov-t">${TYPE_ICON[t.tripType] || '🧭'} ${esc(t.title)}<small>${esc(fmtDate(t.startDate)) || '日付なし'}</small></div>
+      <select class="inp" data-ovvis="${esc(t.tripId)}" aria-label="「${esc(t.title)}」の公開範囲">
+        <option value="private" ${t.visibility === 'private' ? 'selected' : ''}>🔒 非公開</option>
+        <option value="selected" ${t.visibility === 'selected' ? 'selected' : ''}>👪 指定した会員</option>
+        <option value="members" ${t.visibility === 'members' ? 'selected' : ''}>👥 会員全体</option>
+      </select>
+      ${chips}
+      <div class="ov-x"><span>${state}</span><span class="flex gap-3"><button class="lnk" data-act="ovOpen" data-id="${esc(t.tripId)}">開く</button>
+        ${t.visibility !== 'private' ? `<button class="lnk" data-act="ovLine" data-id="${esc(t.tripId)}">LINEで送る</button>` : ''}</span></div>
+    </div>`;
+  }).join('');
+  $$('select[data-ovvis]', box).forEach(sel => sel.addEventListener('change', () => {
+    const t = ov.trips.find(x => x.tripId === sel.dataset.ovvis);
+    if (sel.value === 'members' && !confirm(`「${t.title}」を、ログインしているすべての会員に公開します。よろしいですか？`)) { sel.value = t.visibility; return; }
+    ovSet(t, { visibility: sel.value });
+  }));
+}
+async function ovSet(t, patch) {
+  const row = $('#ov_' + CSS.escape(t.tripId));
+  if (row) row.classList.add('saving');
+  try {
+    const r = await api('setTripSharing', { tripId: t.tripId, ...patch });
+    t.visibility = r.trip.visibility; t.shareIds = r.trip.shareIds || [];
+    syncTripInList({ tripId: t.tripId, visibility: t.visibility, shareIds: t.shareIds, shareCount: t.shareIds.length });
+    if (S.trip && S.trip.tripId === t.tripId) { S.trip = { ...S.trip, ...r.trip }; }
+    S.publicLoaded = false; S.sharedLoaded = false;
+    renderPanel();
+    toast(visLabel({ visibility: t.visibility, shareIds: t.shareIds }) + 'にしました');
+  } catch (e) { toast(e.message, 'err'); }
+  renderOvList();
+}
+function ovChip(el) {
+  const t = S.ov.trips.find(x => x.tripId === el.dataset.id);
+  if (!t) return;
+  const ids = new Set(t.shareIds || []);
+  if (ids.has(el.dataset.c)) ids.delete(el.dataset.c); else ids.add(el.dataset.c);
+  ovSet(t, { shareIds: [...ids] });
+}
+/* ---------- リンクの共有（LINE など） ---------- */
+function tripLink(t) { return APP_URL + '?trip=' + encodeURIComponent(t.tripId); }
+function shareMsg(t) {
+  return `わだちログ「${t.title}」${t.startDate ? '（' + fmtDate(t.startDate) + '）' : ''}を見てください。\n${tripLink(t)}\n※ わだちログにログインすると見られます`;
+}
+function openLine(text) {
+  const w = window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank', 'noopener');
+  if (!w) location.href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
+}
+function shareBarHtml(t, own) {
+  const names = (t.shareNames || []).join('、');
+  const hint = own
+    ? (t.visibility === 'private' ? '今は非公開です。リンクを送る前に、上の公開バッジで公開範囲を設定してください。'
+      : t.visibility === 'selected' ? ((t.shareIds || []).length ? `リンクを開いて見られるのは、共有相手（${names || (t.shareIds || []).length + '人'}）だけです。` : '共有相手が選ばれていないため、今は誰にも見えません。')
+      : 'ログインした会員なら、リンクから見られます。')
+    : 'このトリップを見る権限がある会員だけが、リンクから見られます。';
+  return `<div class="sharebar"><span class="sb-l">リンクを送る</span>
+    <button class="btn btn-line btn-sm" data-act="shareLine">LINEで送る</button>
+    <button class="btn btn-ghost btn-sm" data-act="shareCopy">🔗 リンクをコピー</button>
+    ${navigator.share ? '<button class="btn btn-ghost btn-sm" data-act="shareNative">その他のアプリ</button>' : ''}
+    <span class="sb-n">${esc(hint)}</span></div>`;
+}
+function shareTrip(kind, t) {
+  const fromOv = !!t;
+  t = t || S.trip;
+  if (!t) return;
+  const own = fromOv || canEdit();
+  const hidden = t.visibility === 'private' || !t.visibility || (t.visibility === 'selected' && !(t.shareIds || []).length);
+  if (own && hidden) {
+    if (confirm('このトリップは今、相手から見えない設定です。先に公開範囲を設定しますか？\n（キャンセルするとリンクだけ送ります）')) {
+      if (S.trip && S.trip.tripId === t.tripId) openShareModal();
+      else { closeModal(); openTrip(t.tripId).then(() => { if (S.trip && S.trip.tripId === t.tripId) openShareModal(); }); }
+      return;
+    }
+  }
+  if (kind === 'line') openLine(shareMsg(t));
+  else if (kind === 'copy') copyText(tripLink(t), 'リンクをコピーしました。LINEやメールに貼り付けて送れます');
+  else if (kind === 'native' && navigator.share) navigator.share({ title: 'わだちログ：' + t.title, text: shareMsg(t).replace(/\n.*$/s, ''), url: tripLink(t) }).catch(() => {});
+}
+Object.assign(ACT, {
+  shAll: () => { (S.contacts || []).forEach(c => S.shareEd.ids.add(c.contactId)); renderShareModal(); },
+  shNone: () => { S.shareEd.ids.clear(); renderShareModal(); },
+  shSave: el => saveShareModal(el),
+  cRemove: el => removeContact(el.dataset.id),
+  ovChip: el => ovChip(el),
+  ovOpen: el => { closeModal(); S.listTab = 'mine'; openTrip(el.dataset.id); }
+});
+
 /* ---------- global events ---------- */
 function hasFiles(e) { return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'); }
 async function handleDroppedFiles(files, zone) {
@@ -2426,20 +3051,24 @@ function bindGlobal() {
  * 起動
  * ============================================================ */
 async function boot() {
+  S.pendingTrip = new URLSearchParams(location.search).get('trip') || null;
   initMap();
   bindGlobal();
   renderAll();
-  if (!S.token) return;
+  if (!CONFIG_LOADED) console.warn('config.js を読み込めなかったため、index.html の DEFAULT_GAS_URL を使っています');
+  if (!S.token) {
+    if (gasReady()) api('ping').then(r => { S.serverVersion = r.serverVersion || ''; if (!S.user) renderPanel(); }).catch(() => {});
+    if (S.pendingTrip) { openAuth('login'); toast('共有されたトリップを見るには、ログインしてください'); }
+    return;
+  }
   try {
     const r = await api('me');
+    S.serverVersion = r.serverVersion || '';
     setSession(null, r.user);
-    renderHeader();
-    await loadTrips();
-    const id = new URLSearchParams(location.search).get('trip');
-    if (id) await openTrip(id);
-    if (r.user.mustChangePassword) openChangePw(true);
+    renderAll();
+    await postAuthFlow();
   } catch (e) {
-    if (e.code !== 'AUTH') toast(e.message, 'err');
+    if (e.code !== 'AUTH' && e.code !== 'AGREE') toast(e.message, 'err');
   }
 }
 boot();
