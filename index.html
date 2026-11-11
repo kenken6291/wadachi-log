@@ -467,7 +467,7 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.1.0';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -1318,7 +1318,10 @@ function tripHtml() {
       <button class="btn btn-ghost" data-act="addMedia"><span aria-hidden="true">📷</span><span>写真・動画を追加</span></button>
       <button class="btn btn-ghost" data-act="pinMode"><span aria-hidden="true">📍</span><span>ピンを打つ</span></button>
     </div>` : ''}
+    ${own && !S.route && routableSpots().length >= 2 ? `<div class="note">スポットが${routableSpots().length}か所あります。日時の順につないで、ルートを自動で作れます。
+      <div class="mt-2"><button class="btn btn-route btn-sm" data-act="spotRoute">🧭 スポットをつないでルートを作る</button></div></div>` : ''}
     <div class="subacts">
+      ${own && isAutoRoute() ? `<button class="lnk" data-act="spotRoute">スポットから作り直す</button>` : ''}
       ${S.route ? `<button class="lnk" data-act="togglePlay">ルートを再生</button><button class="lnk" data-act="exportGpx">GPXで書き出す</button><button class="lnk" data-act="copyShare">共有コードをコピー</button>` : ''}
       ${own ? `<button class="lnk" data-act="editTrip">トリップを編集</button><button class="lnk danger" data-act="deleteTrip">削除</button>` : ''}
     </div>
@@ -1662,7 +1665,7 @@ async function openTrip(id) {
   $('#panelBody').innerHTML = '<p class="muted">トリップを開いています…</p>';
   try {
     const r = await api('getTrip', { tripId: id });
-    S.trip = r.trip; S.spots = r.spots || []; S.tab = 'timeline';
+    S.trip = r.trip; S.spots = r.spots || []; S.tab = 'timeline'; S.srSig = spotSig();
     if (multiLayer) multiLayer.clearLayers();
     S.comments = r.comments || []; S.liked = !!r.liked; S.likeCount = r.likeCount || 0; S.editCmt = null; S.cmtDraft = '';
     setRoute(r.route && r.route.points && r.route.points.length > 1 ? normalizeRoute(r.route) : null);
@@ -1776,20 +1779,187 @@ async function importRoute(raw) {
     delete S.routeCache[S.trip.tripId];
     setRoute(r); fitAll(); renderPanel();
     toast('ルートを保存しました');
-    return;
+    return true;
   }
   setRoute(r); fitAll(); renderPanel();
   toast('ルートを表示しています。ログインすると保存できます');
 }
+/* ---------- スポットからルートを自動作成 ----------
+ *  スポットを日時の順に並べ、OpenStreetMap の経路サーバー（routing.openstreetmap.de）で
+ *  道路に沿って結ぶ。つながらない区間は直線で補う。自動作成のルートは、
+ *  スポットの追加・移動・削除に合わせて作り直す。
+ */
+const AUTO_ROUTE_PREFIX = 'スポットから自動作成';
+const SR_MODES = {
+  car:  { lbl: '🚗 車',    name: '車',    host: 'routed-car' },
+  bike: { lbl: '🚲 自転車', name: '自転車', host: 'routed-bike' },
+  foot: { lbl: '🚶 徒歩',  name: '徒歩',  host: 'routed-foot' },
+  line: { lbl: '📏 直線',  name: '直線',  host: '' }
+};
+const srSleep = ms => new Promise(r => setTimeout(r, ms));
+let srTimer = null;
+function defaultSrMode() { const t = S.trip && S.trip.tripType; return t === 'cycling' ? 'bike' : t === 'other' ? 'foot' : 'car'; }
+function isAutoRoute() { return !!(S.route && String(S.route.name || '').indexOf(AUTO_ROUTE_PREFIX) === 0); }
+function autoRouteMode() {
+  const m = String((S.route && S.route.name) || '').match(/（(.+?)）/);
+  return (m && Object.keys(SR_MODES).find(k => SR_MODES[k].name === m[1])) || defaultSrMode();
+}
+function routableSpots() {
+  const out = [];
+  sortedSpots().forEach(s => {
+    const p = [+s.lat, +s.lng];
+    if (!isFinite(p[0]) || !isFinite(p[1]) || Math.abs(p[0]) > 90 || Math.abs(p[1]) > 180) return;
+    if (out.length && hav(out[out.length - 1], p) < 30) return; // 同じ場所が続くときは1か所に
+    out.push(p);
+  });
+  return out;
+}
+function spotSig() { return routableSpots().map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)).join(';'); }
+
+async function osrmRoute(host, pts) {
+  const coords = pts.map(p => p[1].toFixed(6) + ',' + p[0].toFixed(6)).join(';');
+  const url = `https://routing.openstreetmap.de/${host}/route/v1/driving/${coords}?overview=full&geometries=geojson&continue_straight=false`;
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 25000);
+  let res;
+  try { res = await fetch(url, { signal: ctl.signal }); }
+  catch (e) { const er = new Error('経路サーバーに接続できませんでした'); er.net = true; throw er; }
+  finally { clearTimeout(tm); }
+  if (res.status === 429 || res.status >= 500) { const er = new Error('経路サーバーが混み合っています（' + res.status + '）'); er.net = true; throw er; }
+  if (!res.ok) throw new Error('経路サーバーの応答エラー（' + res.status + '）');
+  const j = await res.json();
+  if (j.code !== 'Ok' || !j.routes || !j.routes[0] || !j.routes[0].geometry) throw new Error('道路沿いの経路が見つかりませんでした');
+  const seg = j.routes[0].geometry.coordinates.map(c => [c[1], c[0], null, null]);
+  if (seg.length < 2) throw new Error('経路が見つかりませんでした');
+  // 道路から離れたスポットにもつながるよう、両端にスポットの位置そのものを足す
+  const a = pts[0], b = pts[pts.length - 1];
+  return [[a[0], a[1], null, null], ...seg, [b[0], b[1], null, null]];
+}
+async function buildSpotRoute(mode, onProg) {
+  const pts = routableSpots(), legs = pts.length - 1;
+  if (legs < 1) throw new Error('場所の違うスポットが2か所以上必要です');
+  const pt = p => [p[0], p[1], null, null];
+  if (mode === 'line' || !SR_MODES[mode]) return { points: pts.map(pt), legs, failed: 0, netDown: false };
+  const host = SR_MODES[mode].host, CH = 25;
+  let out = [], failed = 0, netDown = false, calls = 0;
+  const call = async part => { if (calls++) await srSleep(1100); return osrmRoute(host, part); }; // サーバーへの配慮で1秒あける
+  const add = seg => { out = out.concat(out.length ? seg.slice(1) : seg); };
+  for (let i = 0; i < legs; i += CH - 1) {
+    const part = pts.slice(i, i + CH);
+    if (onProg) onProg(i, legs);
+    let seg = null;
+    if (!netDown) { try { seg = await call(part); } catch (e) { if (e.net) netDown = true; } }
+    if (seg) { add(seg); continue; }
+    // まとめて引けないときは1区間ずつ。それでもだめな区間は直線
+    for (let k = 0; k < part.length - 1; k++) {
+      let s2 = null;
+      if (!netDown) { try { s2 = await call([part[k], part[k + 1]]); } catch (e) { if (e.net) netDown = true; } }
+      if (!s2) { s2 = [pt(part[k]), pt(part[k + 1])]; failed++; }
+      if (onProg) onProg(i + k + 1, legs);
+      add(s2);
+    }
+  }
+  if (onProg) onProg(legs, legs);
+  return { points: out, legs, failed, netDown };
+}
+
+function openSpotRoute() {
+  openModal(`<div class="mhead"><h3>スポットからルートを作る</h3>${X_BTN}</div><div id="srBody"></div>`);
+  renderSpotRouteForm($('#srBody'));
+}
+function renderSpotRouteForm(el) {
+  if (!S.trip || !canEdit()) { el.innerHTML = '<p style="line-height:1.8">自分のトリップを開いてから使ってください。</p>'; return; }
+  const n = routableSpots().length;
+  const mode = SR_MODES[S.srMode] ? S.srMode : defaultSrMode();
+  S.srMode = mode;
+  el.innerHTML = `<p style="line-height:1.8">登録したスポット（${n}か所）を<b>日時の順</b>につないで、ルートを作ります。</p>
+    <div class="field mt-3"><span class="lbl">線の引き方</span><div class="seg">
+      ${Object.keys(SR_MODES).map(k => `<label><input type="radio" name="srMode" value="${k}" ${k === mode ? 'checked' : ''}>${SR_MODES[k].lbl}</label>`).join('')}
+    </div></div>
+    <p class="hint" style="line-height:1.7">車・自転車・徒歩は、OpenStreetMap の道路データで通れる道に沿って結びます。日時のないスポットは最後に、同じ場所が続くときは1か所として扱います。距離は目安で、獲得標高と所要時間は記録されません。<br>保存したあとにスポットを追加・移動・削除すると、ルートも自動で作り直します。</p>
+    ${n < 2 ? '<p class="note" style="margin:0 0 12px">場所の違うスポットが2か所以上必要です。</p>' : ''}
+    <p class="ferr"></p>
+    <button type="button" id="srGo" class="btn btn-route w-full" ${n < 2 ? 'disabled' : ''}>ルートを作る</button>`;
+  $$('input[name=srMode]', el).forEach(r => r.addEventListener('change', () => { S.srMode = r.value; }));
+  $('#srGo').addEventListener('click', () => runSpotRoute(el));
+}
+async function runSpotRoute(el) {
+  const btn = $('#srGo'), err = $('.ferr', el), mode = S.srMode || defaultSrMode();
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = '作成中…';
+  modalLocked = true;
+  try {
+    const r = await buildSpotRoute(mode, (i, n) => { if (btn.isConnected && mode !== 'line') btn.textContent = `道路を探しています… ${i} / ${n} 区間`; });
+    modalLocked = false;
+    S.srRoute = { mode, ...r };
+    renderSpotRouteResult(true);
+  } catch (e) {
+    modalLocked = false;
+    if (err.isConnected) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'ルートを作る'; }
+    else toast(e.message, 'err');
+  }
+}
+function renderSpotRouteResult(fit) {
+  const sr = S.srRoute;
+  const km = computeStats(sr.points).distanceKm;
+  const warn = sr.netDown
+    ? '道路の経路サーバーにつながらなかったため、直線で結んでいる区間があります。少し時間をおいて「やり直す」と道路沿いにできます。'
+    : sr.failed ? `${sr.failed}区間は道路沿いの経路が見つからなかったため、直線で結んでいます（海を渡る区間など）。` : '';
+  openModal(`<div class="mhead"><h3>スポットから作ったルート</h3>${X_BTN}</div>
+    <p class="bigkm">約 ${fmtKm(km)}<small>km</small></p>
+    <p class="via mt-2">${SR_MODES[sr.mode].lbl}　${sr.legs + 1}か所を${sr.legs}区間で結びました</p>
+    ${warn ? `<p class="note" style="margin:12px 0">${warn}</p>` : ''}
+    <p class="hint" style="line-height:1.7">地図上の点線で形を確かめてください。順番がおかしいときは、スポットの日時を直してから作り直してください。</p>
+    <div class="flex gap-2 mt-4">
+      <button class="btn btn-ghost" data-act="srBack">やり直す</button>
+      <button class="btn btn-route flex-1" data-act="srUse">このルートで保存</button>
+    </div>`, { peek: true });
+  drawRoutePreview(sr.points, fit);
+}
+
+/* 自動作成ルートは、スポットが変わったら作り直す */
+function scheduleAutoRoute() {
+  if (!canEdit() || !isAutoRoute()) return;
+  clearTimeout(srTimer);
+  srTimer = setTimeout(autoRegenRoute, 1500);
+}
+async function autoRegenRoute() {
+  if (!canEdit() || !isAutoRoute() || S.srBusy) return;
+  const sig = spotSig();
+  if (sig === S.srSig || routableSpots().length < 2) return;
+  const tripId = S.trip.tripId, mode = autoRouteMode();
+  S.srBusy = true;
+  try {
+    toast('スポットに合わせてルートを作り直しています…');
+    const r = await buildSpotRoute(mode);
+    if (!S.trip || S.trip.tripId !== tripId) return;
+    if (r.netDown) { toast('経路サーバーにつながらず、ルートは更新していません。「スポットから作り直す」でやり直せます', 'err'); return; }
+    const rt = normalizeRoute({ name: `${AUTO_ROUTE_PREFIX}（${SR_MODES[mode].name}）`, points: r.points });
+    const st = computeStats(rt.points);
+    const res = await api('saveRoute', { tripId, spotCount: S.spots.length, route: { name: rt.name, points: rt.points, stats: routeStatsPayload(st) } });
+    if (!S.trip || S.trip.tripId !== tripId) return;
+    S.trip = { ...S.trip, ...res.trip };
+    syncTripInList(S.trip);
+    delete S.routeCache[tripId];
+    S.srSig = sig;
+    setRoute(rt); renderPanel();
+    toast('ルートを更新しました');
+  } catch (e) {
+    toast('ルートを更新できませんでした：' + e.message, 'err');
+  } finally {
+    S.srBusy = false;
+    if (S.trip && S.trip.tripId === tripId && spotSig() !== sig) scheduleAutoRoute(); // 作成中にさらに変わった場合
+  }
+}
 function openImport() {
   openModal(`<div class="mhead"><h3>ルートを読み込む</h3>${X_BTN}</div>
     <div class="tabs" role="tablist">
+      ${S.trip && canEdit() ? '<button class="tab" data-act="impTab" data-tab="spots">スポットから</button>' : ''}
       <button class="tab" data-act="impTab" data-tab="file">ファイル</button>
       <button class="tab" data-act="impTab" data-tab="url">URL</button>
       <button class="tab" data-act="impTab" data-tab="image">画像から</button>
       <button class="tab" data-act="impTab" data-tab="text">テキスト</button>
     </div><div id="impBody"></div>`);
-  renderImp('file');
+  renderImp(S.trip && canEdit() && !S.route && routableSpots().length >= 2 ? 'spots' : 'file');
 }
 function renderImp(tab) {
   $$('#modalRoot [data-act=impTab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -1822,6 +1992,8 @@ function renderImp(tab) {
       closeModal();
       await importRoute(parsed);
     });
+  } else if (tab === 'spots') {
+    renderSpotRouteForm(el);
   } else if (tab === 'image') {
     renderImpImage(el);
   } else {
@@ -1896,8 +2068,8 @@ function imgRoutePoints() {
   const p = ((ir.useSnap && ir.snapped) ? ir.snapped : ir.raw).map(x => x.slice());
   return ir.reversed ? p.reverse() : p;
 }
-function drawImgPreview(fit) {
-  const pts = imgRoutePoints();
+function drawImgPreview(fit) { drawRoutePreview(imgRoutePoints(), fit); }
+function drawRoutePreview(pts, fit) {
   previewLayer.clearLayers();
   const ll = pts.map(p => [p[0], p[1]]);
   L.polyline(ll, { color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(previewLayer);
@@ -2156,6 +2328,7 @@ function upsertSpot(s) {
   if (i >= 0) S.spots[i] = s; else S.spots.push(s);
   S.trip.spotCount = S.spots.length;
   syncTripInList({ tripId: S.trip.tripId, spotCount: S.spots.length });
+  scheduleAutoRoute();
 }
 async function addMediaFlow(files) {
   if (!requireTrip()) return;
@@ -2291,6 +2464,7 @@ async function deleteSpot() {
     S.spots = S.spots.filter(x => x.spotId !== sp.spotId);
     S.trip.spotCount = S.spots.length;
     syncTripInList({ tripId: S.trip.tripId, spotCount: S.spots.length });
+    scheduleAutoRoute();
     S.editor = null;
     closeModal(true); drawSpots(); renderPanel(); toast('スポットを削除しました');
   } catch (e) { toast(e.message, 'err'); }
@@ -2432,6 +2606,16 @@ const ACT = {
   copy: el => { const t = $(el.dataset.target); if (t) copyText(t.value, 'コピーしました'); },
   exportGpx: () => exportGpx(),
   copyShare: () => { if (S.route) copyText(JSON.stringify({ wadachi: 1, name: (S.trip && S.trip.title) || S.route.name, points: S.route.points }), '共有コードをコピーしました。「ルートを読み込む」→「テキスト・共有コード」に貼り付けると読み込めます'); },
+  spotRoute: () => { if (canEdit()) openSpotRoute(); },
+  srBack: () => openSpotRoute(),
+  srUse: async () => {
+    const sr = S.srRoute;
+    if (!sr) return;
+    closeModal(true);
+    S.srRoute = null;
+    try { if (await importRoute({ name: `${AUTO_ROUTE_PREFIX}（${SR_MODES[sr.mode].name}）`, points: sr.points })) S.srSig = spotSig(); }
+    catch (e) { toast(e.message, 'err'); }
+  },
   imgReverse: () => { S.imgRoute.reversed = !S.imgRoute.reversed; renderImgResult(false); },
   imgUse: async () => {
     const ir = S.imgRoute;
@@ -2559,7 +2743,8 @@ function openHelp() {
       <p class="mt-2">登録しなくても、GPXなどのファイルを地図に落とせば、距離・標高の確認と再生だけは試せます（保存はされません）。</p>`, true)}
     ${sec('トリップを作る・ルートを読み込む', `<ul>
       <li>右上の<b>＋ 新しいトリップ</b>でタイトル・種類・日付を入れて作成します。GPX・KML・GeoJSON を一緒に選ぶと距離や日付が自動で入ります。</li>
-      <li>トリップ画面の<b>ルートを読み込む</b>では「ファイル」「URL」「画像から」「テキスト」を選べます。</li>
+      <li>トリップ画面の<b>ルートを読み込む</b>では「スポットから」「ファイル」「URL」「画像から」「テキスト」を選べます。</li>
+      <li>GPXなどが無くても、スポットを2か所以上登録すれば<b>スポットからルートを自動作成</b>できます（日時の順に、車・自転車・徒歩の道路沿い、または直線で結びます）。自動作成したルートは、スポットを追加・移動・削除すると自動で作り直します。</li>
       <li><b>画像から</b>：記録アプリのアクティビティマップの画面写真から、AIが線と地名を読み取って経路にします。「道路に沿わせる」「向きを反転」で整えてから登録します。</li>
       <li>一覧の<b>GPXをまとめて取り込む</b>で、複数のファイルを一度に登録できます。</li></ul>`)}
     ${sec('写真・動画・ピン', `<ul>
