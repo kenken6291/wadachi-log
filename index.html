@@ -467,7 +467,7 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -850,7 +850,7 @@ function bindProfile() {
 }
 
 /* ---------- playback ---------- */
-const PB = { on: false, playing: false, frac: 0, last: 0, raf: 0, marker: null, nearId: null, hold: false, shown: new Set(), card: null, cardT: 0 };
+const PB = { on: false, playing: false, frac: 0, last: 0, raf: 0, marker: null, nearId: null, hold: false, shown: new Set(), card: null, cardT: 0, mk: null, prevDist: -1 };
 const PP_SEC = { photo: 3, video: 3.5 }; // 1枚あたりの表示秒数
 const NEAR_M = 250; // この距離以内のスポットを「近くのスポット」として表示
 function showPlaybar(show) {
@@ -882,11 +882,63 @@ function pbSet(f) {
   if (p.time) { const d = new Date(p.time); info += ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
   $('#pbInfo').textContent = info;
   pbUpdateNear(p);
+  return p;
+}
+/**
+ * スポットを、ルート上の「何km地点か」に対応づける（日時の順に、ルートを前へ進みながら探す）。
+ * スタートとゴールが同じ場所のルートでも、最後のスポットを最初に拾わないようにするため。
+ */
+function pbMarks() {
+  if (PB.mk) return PB.mk;
+  const pts = S.route.points, cum = S.stats.cum, n = pts.length, TH = 300;
+  const list = [];
+  let from = 0;
+  sortedSpots().forEach(s => {
+    const q = [+s.lat, +s.lng];
+    if (!isFinite(q[0]) || !isFinite(q[1])) return;
+    let idx = -1, off = Infinity;
+    for (let i = from; i < n; i++) {
+      if (hav(pts[i], q) > TH) continue;
+      // 最初に近づいた区間の中で、いちばん近い点
+      for (let j = i; j < n; j++) {
+        const d = hav(pts[j], q);
+        if (d > TH) break;
+        if (d < off) { off = d; idx = j; }
+      }
+      break;
+    }
+    let advance = true;
+    if (idx < 0) { // ルートから離れたスポット：残りの区間でいちばん近い点
+      for (let i = from; i < n; i++) { const d = hav(pts[i], q); if (d < off) { off = d; idx = i; } }
+      advance = off <= 2000; // 大きく離れたスポットで、探す位置を先へ飛ばさない
+    }
+    if (idx < 0) return;
+    list.push({ s, dist: cum[idx], off });
+    if (advance) from = idx;
+  });
+  list.sort((a, b) => a.dist - b.dist);
+  PB.mk = list;
+  return list;
+}
+/** 再生中に通過したスポットの写真を出す。写真を出したら true */
+function pbCheckMarks(cur) {
+  for (const m of pbMarks()) {
+    if (m.dist > cur) break;
+    if (m.dist < PB.prevDist || PB.shown.has(m.s.spotId) || !(m.s.media || []).length || m.off > NEAR_M * 2) continue;
+    // 再生を始めた地点のスポットは、止めずに写真だけ見せる（「動かない」ように見えないため）
+    pbShowPhotos(m.s, m.dist <= PB.startDist + 1);
+    return true;
+  }
+  PB.prevDist = cur;
+  return false;
 }
 function pbUpdateNear(p) {
-  let best = null, bestD = Infinity;
-  S.spots.forEach(s => { const d = hav([p.lat, p.lng], [s.lat, s.lng]); if (d < bestD) { bestD = d; best = s; } });
-  const near = best && bestD <= NEAR_M ? best : null;
+  let near = null, bestD = Infinity;
+  pbMarks().forEach(m => {
+    if (m.off > NEAR_M) return;
+    const d = Math.abs(m.dist - p.dist);
+    if (d <= NEAR_M && d < bestD) { bestD = d; near = m.s; }
+  });
   const id = near ? near.spotId : null;
   if (id === PB.nearId) return;
   PB.nearId = id;
@@ -904,15 +956,13 @@ function pbUpdateNear(p) {
     <span class="nm">${no}. ${esc(near.title || '名称未設定のスポット')}</span>
     <button class="lnk" data-act="pbView" data-id="${esc(id)}">見る</button>
     ${canEdit() ? `<button class="lnk" data-act="pbEdit" data-id="${esc(id)}">編集・削除</button>` : ''}`;
-  // 再生中に写真のあるスポットへ差しかかったら写真を表示
-  if (PB.playing && (near.media || []).length && !PB.shown.has(id)) pbShowPhotos(near);
 }
 
 /* ---------- 再生中の写真ポップアップ ---------- */
-function pbShowPhotos(s) {
+function pbShowPhotos(s, noHold) {
   PB.shown.add(s.spotId);
   PB.card = { s, i: 0 };
-  PB.hold = !!$('#pbStop').checked;
+  PB.hold = !noHold && !!$('#pbStop').checked;
   renderPbCard(true);
 }
 function renderPbCard(auto) {
@@ -963,16 +1013,23 @@ function pbHideCard() {
   const box = $('#pbPhoto');
   if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
 }
-function pbRefresh() { if (PB.on && S.route) { PB.nearId = undefined; pbSet(PB.frac); } }
+function pbRefresh() { PB.mk = null; if (PB.on && S.route) { PB.nearId = undefined; pbSet(PB.frac); } }
 function pbTick(ts) {
   if (!PB.playing) return;
-  const dt = PB.last ? (ts - PB.last) / 1000 : 0;
+  const dt = PB.last ? Math.min(0.5, (ts - PB.last) / 1000) : 0;
   PB.last = ts;
-  if (PB.hold) { PB.raf = requestAnimationFrame(pbTick); return; } // 写真表示中は進めない
-  const f = PB.frac + dt / Number($('#pbSpeed').value);
-  if (f >= 1) { pbSet(1); pbPause(); return; }
-  pbSet(f);
-  pbKeepVisible();
+  try {
+    if (PB.hold && !PB.card) PB.hold = false; // 写真カードが無いのに止まったままにならないように
+    if (!PB.hold) { // 写真表示中は進めない
+      const f = PB.frac + dt / (Number($('#pbSpeed').value) || 45);
+      const p = pbSet(Math.min(1, f));
+      pbCheckMarks(p.dist);
+      pbKeepVisible();
+      if (f >= 1 && !PB.hold) { pbPause(); return; }
+    }
+  } catch (e) {
+    console.error('再生エラー', e); // 1回の失敗で再生が止まらないように
+  }
   PB.raf = requestAnimationFrame(pbTick);
 }
 /** 再生マーカーが、再生バー・写真カード・下部パネルに隠れない位置に来るよう地図を動かす */
@@ -998,8 +1055,10 @@ function pbKeepVisible(force) {
 function pbPlay() {
   if (PB.playing) { pbPause(); return; }
   closePbJump();
-  if (PB.frac >= 1) { PB.frac = 0; PB.shown.clear(); }
+  if (PB.frac >= 0.999) { PB.frac = 0; PB.shown.clear(); }
   if (PB.card) { PB.shown.add(PB.card.s.spotId); pbHideCard(); }
+  const d0 = posAtFrac(PB.frac).dist;
+  PB.startDist = d0; PB.prevDist = d0 - 1; // 今いる地点のスポットも拾う
   PB.playing = true; PB.last = 0; PB.nearId = undefined;
   const b = $('#pbBtn'); b.textContent = '❚❚'; b.setAttribute('aria-label', '一時停止');
   PB.raf = requestAnimationFrame(pbTick);
@@ -1011,7 +1070,7 @@ function pbPause() {
   if (PB.card) { clearTimeout(PB.cardT); pbCardBar(false); } // カードは残し、自動送りだけ止める
   const b = $('#pbBtn'); b.textContent = '▶'; b.setAttribute('aria-label', '再生');
 }
-function pbReset() { PB.frac = 0; if (PB.on) showPlaybar(false); }
+function pbReset() { PB.frac = 0; PB.mk = null; if (PB.on) showPlaybar(false); }
 
 /* ---------- 距離・時刻を指定して移動 ---------- */
 function openPbJump() {
