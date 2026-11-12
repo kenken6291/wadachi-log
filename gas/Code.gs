@@ -5,7 +5,7 @@
  * ★ 修正したら必ず再デプロイ：
  *   ［デプロイ］→［デプロイを管理］→ 鉛筆 → バージョン「新バージョン」→［デプロイ］
  */
-const SERVER_VERSION = '2.0.0';
+const SERVER_VERSION = '2.1.0';
 const TERMS_VERSION = '2026-11-04';
 const DEFAULT_APP_URL = 'https://kenken6291.github.io/wadachi-log/';
 
@@ -89,6 +89,7 @@ const ACTIONS = {
   generateAi: (req, u) => generateAi_(req, u),
   routeFromImage: (req, u) => routeFromImage_(req, u),
   fetchRemote: (req, u) => fetchRemote_(req, u),
+  resolveMapUrl: (req, u) => resolveMapUrl_(req, u),
   addComment: (req, u) => addComment_(req, u),
   updateComment: (req, u) => updateComment_(req, u),
   deleteComment: (req, u) => deleteComment_(req, u),
@@ -1032,6 +1033,58 @@ function nearestIdx_(line, l) {
   let bi = 0, bd = Infinity;
   line.forEach((p, i) => { const d = Math.hypot(p[0] - l.px, p[1] - l.py); if (d < bd) { bd = d; bi = i; } });
   return bi;
+}
+
+
+/* ============================================================
+ * Googleマップの共有リンク（maps.app.goo.gl など）から位置を読み取る
+ *  短縮リンクはブラウザから展開できないため、ここで転送先をたどる
+ * ============================================================ */
+const GMAP_HOST_RE = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|(www\.|maps\.)?google\.[a-z.]+(\/maps|\/url|\/search|\/?\?)|consent\.google\.[a-z.]+)/i;
+function gmapParse_(u) {
+  let s = String(u || '');
+  try { s = decodeURIComponent(s); } catch (e) { /* そのまま */ }
+  const m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+    s.match(/[?&](?:q|query|ll|destination|daddr|center|sll)=(?:loc:)?\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  const nm = s.match(/\/maps\/place\/([^\/@?]+)/);
+  return { lat: m ? Number(m[1]) : null, lng: m ? Number(m[2]) : null, name: nm ? nm[1].replace(/\+/g, ' ').trim() : '' };
+}
+function resolveMapUrl_(req) {
+  let url = String(req.url || '').trim();
+  if (!GMAP_HOST_RE.test(url)) err_('VALID', 'Googleマップの共有リンクを入力してください');
+  let body = '';
+  for (let i = 0; i < 8; i++) {
+    const res = UrlFetchApp.fetch(url, { followRedirects: false, muteHttpExceptions: true,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', 'Accept-Language': 'ja' } });
+    const code = res.getResponseCode(), h = res.getAllHeaders();
+    let loc = h.Location || h.location || '';
+    if (Array.isArray(loc)) loc = loc[0];
+    if (code >= 300 && code < 400 && loc) {
+      if (/^\//.test(loc)) loc = url.match(/^https?:\/\/[^\/]+/)[0] + loc;
+      // 同意画面へ飛ばされたときは、行き先（continue）を使う
+      const cm = loc.match(/^https?:\/\/consent\.google\.[^\/]+\/.*[?&]continue=([^&]+)/);
+      url = cm ? decodeURIComponent(cm[1]) : loc;
+      const p = gmapParse_(url);
+      if (p.lat != null) break;
+      continue;
+    }
+    if (code >= 400) err_('FETCH', 'リンクを開けませんでした（' + code + '）');
+    body = res.getContentText().slice(0, 600000);
+    break;
+  }
+  const out = gmapParse_(url);
+  if (out.lat == null && body) {
+    const t = body.replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+    const m = t.match(/center=(-?\d+\.\d+)(?:%2C|,)(-?\d+\.\d+)/) || t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+      t.match(/@(-?\d+\.\d+),(-?\d+\.\d+),\d/) || t.match(/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/);
+    if (m) { out.lat = Number(m[1]); out.lng = Number(m[2]); }
+    if (!out.name) {
+      const tm = t.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i);
+      if (tm) out.name = tm[1].replace(/\s*[-·]\s*Google\s*マップ.*$/i, '').replace(/\s*-\s*Google Maps.*$/i, '').trim();
+    }
+  }
+  if (out.lat == null || Math.abs(out.lat) > 90 || Math.abs(out.lng) > 180) err_('VALID', 'このリンクから位置を読み取れませんでした。Googleマップで場所を長押しして出る「緯度, 経度」を貼り付けてください');
+  return { lat: out.lat, lng: out.lng, name: str_(out.name, 80), url: url.slice(0, 500) };
 }
 
 /* ============================================================
