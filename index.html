@@ -94,6 +94,11 @@
   .seg { display: flex; border: 1px solid #C3CDC6; border-radius: 10px; overflow: hidden; }
   .seg label { flex: 1; text-align: center; padding: 9px 4px; font-size: 14px; cursor: pointer; border-right: 1px solid #C3CDC6; background: #fff; }
   .seg label:last-child { border-right: 0; }
+  .seg.seg-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .seg.seg-grid label { border-bottom: 1px solid #C3CDC6; white-space: nowrap; }
+  .seg.seg-grid label:nth-child(3n) { border-right: 0; }
+  .seg.seg-grid label:nth-child(n+4) { border-bottom: 0; }
+  .seg.seg-grid label:last-child:nth-child(3n+2) { grid-column: span 2; }
   .seg input { position: absolute; opacity: 0; pointer-events: none; }
   .seg label:has(input:checked) { background: var(--ink); color: #fff; font-weight: 700; }
   .seg label:has(input:focus-visible) { outline: 3px solid #3A8DDE; outline-offset: -3px; }
@@ -467,7 +472,7 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -475,8 +480,8 @@ const APP_URL = String(CFG.APP_URL || (location.origin + location.pathname)).rep
 const CONFIG_LOADED = !!window.WADACHI_CONFIG;
 const MAX_VIDEO_MB = 28;
 
-const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', other: 'その他' };
-const TYPE_ICON = { cycling: '🚲', drive: '🚗', other: '🧭' };
+const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', ferry: 'フェリー', plane: '飛行機', other: 'その他' };
+const TYPE_ICON = { cycling: '🚲', drive: '🚗', ferry: '⛴️', plane: '✈️', other: '🧭' };
 const ROUTE_EXT = /\.(gpx|kml|geojson|json)$/i;
 
 /* ---------- storage & state ---------- */
@@ -1761,7 +1766,7 @@ async function openTripForm(trip, pendingRoute) {
   openModal(`<div class="mhead"><h3>${isNew ? '新しいトリップ' : 'トリップを編集'}</h3>${X_BTN}</div>
     <form id="fTrip" novalidate>
       <div class="field"><label for="f_title">タイトル</label><input class="inp" id="f_title" name="title" maxlength="80" required placeholder="例：しまなみ海道 はじめての完走" value="${esc(t.title || (pr && pr.name) || '')}"></div>
-      <div class="field"><span class="lbl">種類</span><div class="seg">
+      <div class="field"><span class="lbl">種類</span><div class="seg seg-grid">
         ${Object.keys(TYPE_LABEL).map(k => `<label><input type="radio" name="tripType" value="${k}" ${k === type ? 'checked' : ''}>${TYPE_ICON[k]} ${TYPE_LABEL[k]}</label>`).join('')}
       </div></div>
       <div class="grid grid-cols-2 gap-3">
@@ -1857,7 +1862,7 @@ const SR_MODES = {
 };
 const srSleep = ms => new Promise(r => setTimeout(r, ms));
 let srTimer = null;
-function defaultSrMode() { const t = S.trip && S.trip.tripType; return t === 'cycling' ? 'bike' : t === 'other' ? 'foot' : 'car'; }
+function defaultSrMode() { const t = S.trip && S.trip.tripType; return t === 'cycling' ? 'bike' : t === 'other' ? 'foot' : (t === 'ferry' || t === 'plane') ? 'line' : 'car'; }
 function isAutoRoute() { return !!(S.route && String(S.route.name || '').indexOf(AUTO_ROUTE_PREFIX) === 0); }
 function autoRouteMode() {
   const m = String((S.route && S.route.name) || '').match(/（(.+?)）/);
@@ -2164,7 +2169,7 @@ function renderImgResult(fit) {
 /* ---------- GPXのまとめて取り込み ----------
  * ファイル名の規則：「29 3 月 2025多摩川でキャンプ.gpx」
  *   前部「日 月 月 年」→ 出発日、後部 → タイトル
- *   「散歩」を含む→その他、「サイクリング」を含む→サイクリング、それ以外→ドライブ
+ *   「散歩」→その他、「サイクリング」→サイクリング、「フェリー」「船」→フェリー、「飛行機」「フライト」「空路」→飛行機、それ以外→ドライブ
  */
 function parseTripFileName(name) {
   const base = name.replace(/^\d{10,}_/, '').replace(/\.[^.]+$/, '');
@@ -2177,7 +2182,7 @@ function parseTripFileName(name) {
     title = m[4];
   }
   title = title.replace(/[_\s　]+/g, ' ').trim() || base;
-  const type = /散歩/.test(base) ? 'other' : (/サイクリング/.test(base) ? 'cycling' : 'drive');
+  const type = /散歩/.test(base) ? 'other' : /サイクリング/.test(base) ? 'cycling' : /フェリー|船/.test(base) ? 'ferry' : /飛行機|フライト|空路/.test(base) ? 'plane' : 'drive';
   return { date, title: title.slice(0, 80), type };
 }
 function openBulkImport(files) {
@@ -2231,7 +2236,7 @@ function renderBulk() {
   openModal(`<div class="mhead"><h3>GPXをまとめて取り込む</h3>${b.running ? '' : X_BTN}</div>
     ${b.running || b.done ? '' : `<label class="drop small" data-drop="bulk">GPX・KML・GeoJSON を複数ドロップ、またはタップして選ぶ
       <input type="file" id="bkFiles" accept=".gpx,.kml,.geojson,.json" multiple hidden></label>
-      <p class="hint" style="line-height:1.7">ファイル名「29 3 月 2025多摩川でキャンプ.gpx」の前部を出発日、後部をタイトルにします。種類は「散歩」を含むと「その他」、「サイクリング」を含むと「サイクリング」、それ以外は「ドライブ」。取り込む前に各欄を直せます。</p>`}
+      <p class="hint" style="line-height:1.7">ファイル名「29 3 月 2025多摩川でキャンプ.gpx」の前部を出発日、後部をタイトルにします。種類は「散歩」を含むと「その他」、「サイクリング」は「サイクリング」、「フェリー」「船」は「フェリー」、「飛行機」「フライト」「空路」は「飛行機」、それ以外は「ドライブ」。取り込む前に各欄を直せます。</p>`}
     ${b.items.length ? `<div class="bk-list">${rows}</div>` : ''}
     <div class="field" style="margin-bottom:10px"><span class="lbl">公開範囲（すべてに適用）</span><div class="seg">
       <label><input type="radio" name="bkVis" value="private" ${b.vis === 'private' ? 'checked' : ''} ${b.running ? 'disabled' : ''}>🔒 非公開</label>
@@ -2890,7 +2895,7 @@ function openHelp() {
       <li>パスワードを忘れたときは、ログイン画面の「パスワードを忘れた」から仮パスワードを再発行できます。</li></ol>
       <p class="mt-2">登録しなくても、GPXなどのファイルを地図に落とせば、距離・標高の確認と再生だけは試せます（保存はされません）。</p>`, true)}
     ${sec('トリップを作る・ルートを読み込む', `<ul>
-      <li>右上の<b>＋ 新しいトリップ</b>でタイトル・種類・日付を入れて作成します。GPX・KML・GeoJSON を一緒に選ぶと距離や日付が自動で入ります。</li>
+      <li>右上の<b>＋ 新しいトリップ</b>でタイトル・種類（サイクリング・ドライブ・フェリー・飛行機・その他）・日付を入れて作成します。GPX・KML・GeoJSON を一緒に選ぶと距離や日付が自動で入ります。</li>
       <li>トリップ画面の<b>ルートを読み込む</b>では「スポットから」「ファイル」「URL」「画像から」「テキスト」を選べます。</li>
       <li>スポットの位置は、Googleマップの「緯度, 経度」や共有リンク（maps.app.goo.gl）を貼り付けて指定できます（スポット編集の「Googleマップの座標・共有リンクで指定」、またはトリップ画面の「Googleマップから追加」）。</li>
       <li>GPXなどが無くても、スポットを2か所以上登録すれば<b>スポットからルートを自動作成</b>できます（日時の順に、車・自転車・徒歩の道路沿い、または直線で結びます）。自動作成したルートは、スポットを追加・移動・削除すると自動で作り直します。</li>

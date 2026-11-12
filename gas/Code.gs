@@ -5,7 +5,7 @@
  * ★ 修正したら必ず再デプロイ：
  *   ［デプロイ］→［デプロイを管理］→ 鉛筆 → バージョン「新バージョン」→［デプロイ］
  */
-const SERVER_VERSION = '2.1.0';
+const SERVER_VERSION = '2.2.0';
 const TERMS_VERSION = '2026-11-04';
 const DEFAULT_APP_URL = 'https://kenken6291.github.io/wadachi-log/';
 
@@ -19,7 +19,7 @@ const SHEETS = {
   TripShares: ['tripId', 'ownerId', 'userId', 'createdAt']
 };
 const VIS = ['private', 'selected', 'members'];
-const TRIP_TYPES = ['cycling', 'drive', 'other'];
+const TRIP_TYPES = ['cycling', 'drive', 'ferry', 'plane', 'other'];
 const MAX_POINTS = 8000;
 const MAX_MEDIA = 30;
 const MAX_CONTACTS = 100;
@@ -839,7 +839,7 @@ function generateAi_(req, u) {
   const mode = ['summary', 'highlights', 'sns'].indexOf(req.mode) >= 0 ? req.mode : 'summary';
   const spots = rows_('Waypoints_Media').filter(s => s.tripId === t.tripId).map(spotOut_)
     .sort((a, b) => (Date.parse(a.takenAt) || 9e15) - (Date.parse(b.takenAt) || 9e15));
-  const typeName = { cycling: 'サイクリング', drive: 'ドライブ', other: 'おでかけ' }[t.tripType] || 'おでかけ';
+  const typeName = { cycling: 'サイクリング', drive: 'ドライブ', ferry: 'フェリーの旅', plane: '飛行機の旅', other: 'おでかけ' }[t.tripType] || 'おでかけ';
   const fmtDT = iso => { const d = new Date(iso); return isNaN(d) ? '' : Utilities.formatDate(d, 'Asia/Tokyo', 'M/d HH:mm'); };
   const lines = [
     '【トリップ】' + t.title, '種類：' + typeName,
@@ -1025,7 +1025,8 @@ function routeFromImage_(req, u) {
     if (seq.length < 2) err_('AI', '画像から地名や経路を十分に読み取れませんでした。地名がいくつか写っている画像でお試しください');
     points = seq.map(l => [l.lat, l.lng, null, null]);
   }
-  const snapped = snapOsrm_(points, req.tripType);
+  // フェリー・飛行機は道路に沿わせない
+  const snapped = (req.tripType === 'ferry' || req.tripType === 'plane') ? null : snapOsrm_(points, req.tripType);
   return { name: str_(j.name, 80) || '画像から読み取った経路', method: method, waypoints: waypoints.length ? waypoints : lm.map(l => l.name),
     directionKnown: !!j.directionKnown, points: points, snapped: snapped };
 }
