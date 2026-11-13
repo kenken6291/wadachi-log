@@ -5,7 +5,7 @@
  * ★ 修正したら必ず再デプロイ：
  *   ［デプロイ］→［デプロイを管理］→ 鉛筆 → バージョン「新バージョン」→［デプロイ］
  */
-const SERVER_VERSION = '2.2.0';
+const SERVER_VERSION = '2.3.0';
 const TERMS_VERSION = '2026-11-04';
 const DEFAULT_APP_URL = 'https://kenken6291.github.io/wadachi-log/';
 
@@ -90,6 +90,7 @@ const ACTIONS = {
   routeFromImage: (req, u) => routeFromImage_(req, u),
   fetchRemote: (req, u) => fetchRemote_(req, u),
   resolveMapUrl: (req, u) => resolveMapUrl_(req, u),
+  geocodeText: (req, u) => geocodeText_(req, u),
   addComment: (req, u) => addComment_(req, u),
   updateComment: (req, u) => updateComment_(req, u),
   deleteComment: (req, u) => deleteComment_(req, u),
@@ -1036,6 +1037,30 @@ function nearestIdx_(line, l) {
   return bi;
 }
 
+
+/* ============================================================
+ * 場所の名前・住所から位置を求める（スマホのGoogleマップでコピーした住所など）
+ *  Apps Script の Maps サービス（Googleのジオコーダ）を使う。APIキー不要
+ * ============================================================ */
+function geocodeText_(req) {
+  const qs = (Array.isArray(req.queries) ? req.queries : [req.q]).map(q => str_(q, 200)).filter(Boolean).slice(0, 7);
+  if (!qs.length) err_('VALID', '場所の名前か住所を入力してください');
+  const g = Maps.newGeocoder().setLanguage('ja').setRegion('jp');
+  for (let i = 0; i < qs.length; i++) {
+    let r;
+    try { r = g.geocode(qs[i]); } catch (e) { continue; }
+    if (r && r.status === 'OK' && r.results && r.results.length) {
+      const x = r.results[0], loc = x.geometry.location;
+      return {
+        lat: loc.lat, lng: loc.lng,
+        address: String(x.formatted_address || '').replace(/^日本、\s*/, '').replace(/^〒\d{3}-\d{4}\s*/, ''),
+        approximate: x.geometry.location_type === 'APPROXIMATE' || !!x.partial_match,
+        query: qs[i]
+      };
+    }
+  }
+  err_('VALID', 'その場所・住所を地図で見つけられませんでした。共有リンクか「緯度, 経度」を貼り付けてください');
+}
 
 /* ============================================================
  * Googleマップの共有リンク（maps.app.goo.gl など）から位置を読み取る

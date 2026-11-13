@@ -472,7 +472,7 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.5.0';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -567,7 +567,7 @@ async function api(action, data = {}) {
 /* ============================================================
  * 地図
  * ============================================================ */
-let map, routeLayer, spotLayer, previewLayer, multiLayer, hoverMarker;
+let map, routeLayer, spotLayer, previewLayer, multiLayer, multiRenderer, hoverMarker;
 function initMap() {
   const gsiPale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
     maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' });
@@ -597,6 +597,7 @@ function initMap() {
   spotLayer = L.layerGroup().addTo(map);
   previewLayer = L.layerGroup().addTo(map);
   multiLayer = L.layerGroup().addTo(map);
+  multiRenderer = L.canvas({ padding: 0.5, tolerance: 6 }); // 100本重ねても軽く描けるようにCanvasで描く
 
   map.on('click', e => {
     if (S.pick) { const cb = S.pick; endPick(); cb(e.latlng); }
@@ -1144,7 +1145,7 @@ function pbJumpTo(frac) {
 function closePbJump() { const b = $('#pbJump'); if (b) { b.classList.add('hidden'); b.innerHTML = ''; } }
 /* ---------- 一覧で選んだルートの重ね表示 ---------- */
 const SEL_COLORS = ['#D1206B', '#1F6FD1', '#2E8B3E', '#E67E00', '#7B3FC4', '#0F9AA8', '#8C5A2B', '#A6A000', '#D94FA5', '#3A4A44'];
-const SEL_MAX = 50;
+const SEL_MAX = 100;
 function selColor(i) { return SEL_COLORS[i % SEL_COLORS.length]; }
 function saveSel() { ls.set('wadachi.sel', JSON.stringify(S.sel)); }
 function allKnownTrips() {
@@ -1171,9 +1172,15 @@ async function drawMulti(fit) {
   if (need.length) {
     toast(`ルートを読み込んでいます（${need.length}件）…`);
     try {
-      const r = await api('getRoutes', { tripIds: need });
-      need.forEach(id => { S.routeCache[id] = r.routes[id] || []; });
-    } catch (e) { toast(e.message, 'err'); return; }
+      // 一度に読みすぎるとサーバーが時間切れになるので、20件ずつ読む
+      for (let k = 0; k < need.length; k += 20) {
+        const part = need.slice(k, k + 20);
+        if (need.length > 20) toast(`ルートを読み込んでいます（${Math.min(k + 20, need.length)} / ${need.length}件）…`);
+        const r = await api('getRoutes', { tripIds: part });
+        part.forEach(id => { S.routeCache[id] = r.routes[id] || []; });
+        if (S.trip) return;
+      }
+    } catch (e) { toast(e.message, 'err'); }
     if (S.trip) return; // 読み込み中にトリップを開いた場合
   }
   multiLayer.clearLayers();
@@ -1186,8 +1193,8 @@ async function drawMulti(fit) {
     const col = selColor(i);
     const t = trips[id] || {};
     const label = `${t.title || 'ルート'}${t.startDate ? '（' + fmtDate(t.startDate) + '）' : ''}`;
-    L.polyline(pts, { color: '#fff', weight: 7, opacity: .9, interactive: false }).addTo(multiLayer);
-    const line = L.polyline(pts, { color: col, weight: 4, opacity: .95 }).addTo(multiLayer);
+    L.polyline(pts, { color: '#fff', weight: 7, opacity: .9, interactive: false, renderer: multiRenderer }).addTo(multiLayer);
+    const line = L.polyline(pts, { color: col, weight: 4, opacity: .95, renderer: multiRenderer }).addTo(multiLayer);
     line.bindTooltip(esc(label), { sticky: true });
     line.on('click', () => openTrip(id));
     line.on('mouseover', () => line.setStyle({ weight: 7 }));
@@ -2449,6 +2456,7 @@ function placeManually(items) {
 }
 
 /* ---------- Googleマップの座標・共有リンクから位置を取る ---------- */
+const GM_HOWTO = `<p class="hint" style="line-height:1.7">スマホのGoogleマップでは、場所を開いて<b>「共有」→コピー</b>、<b>住所をタップしてコピー</b>、または地図を<b>長押しして出る座標</b>をコピーして貼り付けてください。場所の名前と住所を一緒に貼ると、より正確になります。</p>`;
 function gmValid(lat, lng) { return isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0); }
 function gmFromUrl(u) {
   let s = String(u || '');
@@ -2469,33 +2477,74 @@ function gmCoords(t) {
   const m = t.match(/(-?\d{1,2}\.\d+)\s*[,\s]\s*(-?\d{1,3}\.\d+)/);
   return m ? { lat: +m[1], lng: +m[2] } : null;
 }
-/** 貼り付けた文字（座標・URL・両方）から { lat, lng, name } を求める */
+/** 貼り付けた文字を「場所の名前」と「住所」に分ける（スマホのGoogleマップの共有テキスト・コピーした住所） */
+function gmTextParts(t) {
+  const lines = String(t || '').split(/\r?\n/).map(x => x.trim()).filter(x => x && !/^https?:\/\//i.test(x));
+  const parts = [];
+  lines.forEach(l => l.replace(/https?:\/\/\S+/gi, ' ').split(/\s+(?=〒)/).forEach(x => { x = x.trim(); if (x) parts.push(x); }));
+  const isAddr = l => /^(日本、\s*)?〒/.test(l) || /^\d{3}-?\d{4}(\s|$)/.test(l) || /(都|道|府|県).*(市|区|町|村|郡)/.test(l) || /丁目|番地|\d+-\d+/.test(l);
+  const addr = parts.filter(isAddr).map(a => a.replace(/^日本、\s*/, '').replace(/^〒?\s*\d{3}-?\d{4}\s*/, '').trim()).filter(Boolean)[0] || '';
+  const zm = String(t || '').match(/〒?\s*(\d{3})-(\d{4})/);
+  const zip = zm ? zm[1] + '-' + zm[2] : '';
+  const name = (parts.find(p => !isAddr(p) && !gmCoords(p) && !/^[★☆\d.\s()（）件]+$/.test(p)) || '').slice(0, 80);
+  return { name, addr, zip };
+}
+/** 貼り付けた文字（座標・URL・場所の名前・住所、その組み合わせ）から { lat, lng, name, approximate } を求める */
 async function resolveGmap(text) {
   const t = String(text || '').trim();
-  if (!t) throw new Error('座標か、Googleマップのリンクを貼り付けてください');
+  if (!t) throw new Error('場所の名前・住所・座標・共有リンクのどれかを貼り付けてください');
   const um = t.match(/https?:\/\/\S+/i);
   const url = um ? um[0] : '';
   const c = gmCoords(url ? t.replace(url, ' ') : t);
-  let res = { lat: null, lng: null, name: '' };
-  if (url) res = gmFromUrl(url);
+  const tp = gmTextParts(t);
+  let res = { lat: null, lng: null, name: '', approximate: false }, urlErr = null;
+  if (url) res = { ...res, ...gmFromUrl(url) };
   if (c && gmValid(c.lat, c.lng)) { res.lat = c.lat; res.lng = c.lng; } // 書かれた座標を優先
-  if ((res.lat == null || (!res.name && !c)) && url) {
-    if (!/google\.|goo\.gl|g\.co\//i.test(url)) { if (res.lat == null) throw new Error('GoogleマップのURLではないようです'); }
-    else {
-      try {
-        const r = await api('resolveMapUrl', { url });
-        if (res.lat == null) { res.lat = r.lat; res.lng = r.lng; }
-        if (!res.name) res.name = r.name || '';
-      } catch (e) {
-        if (res.lat == null) {
-          if (e.code === 'BAD_ACTION') throw new Error('短縮リンクを読むには、サーバー（Code.gs）を新しい版に更新してください。座標「緯度, 経度」の貼り付けなら今のままで使えます');
-          throw e;
-        }
-      }
+  if ((res.lat == null || (!res.name && !tp.name && !c)) && url && /google\.|goo\.gl|g\.co\//i.test(url)) {
+    try {
+      const r = await api('resolveMapUrl', { url });
+      if (res.lat == null) { res.lat = r.lat; res.lng = r.lng; }
+      if (!res.name) res.name = r.name || '';
+    } catch (e) { urlErr = e; }
+  }
+  // リンクで決まらないときは、場所の名前・住所から探す
+  if (res.lat == null && (tp.name || tp.addr)) {
+    const z = tp.zip ? '〒' + tp.zip + ' ' : '', qs = [];
+    if (tp.addr && tp.name) qs.push(z + tp.addr + ' ' + tp.name, tp.addr + ' ' + tp.name, tp.name + ' ' + tp.addr);
+    if (tp.addr) qs.push(z + tp.addr);
+    if (tp.zip) qs.push('〒' + tp.zip);
+    if (tp.name) qs.push(tp.name);
+    if (tp.addr && tp.zip) qs.push(tp.addr);
+    try {
+      const r = await api('geocodeText', { queries: qs });
+      res.lat = r.lat; res.lng = r.lng;
+      res.approximate = !!r.approximate || (!tp.name && /^\S+(市|区|町|村|郡)$/.test(tp.addr));
+    } catch (e) {
+      if (e.code === 'BAD_ACTION') throw new Error('場所の名前・住所から探すには、サーバー（Code.gs）を新しい版に更新してください');
+      throw e;
     }
   }
-  if (res.lat == null || !gmValid(+res.lat, +res.lng)) throw new Error('位置を読み取れませんでした。「43.52954, 142.46469」のような緯度・経度か、Googleマップの共有リンクを貼り付けてください');
-  return { lat: Math.round(res.lat * 1e6) / 1e6, lng: Math.round(res.lng * 1e6) / 1e6, name: String(res.name || '').slice(0, 80) };
+  if (res.lat == null && urlErr) {
+    if (urlErr.code === 'BAD_ACTION') throw new Error('短縮リンクを読むには、サーバー（Code.gs）を新しい版に更新してください。座標「緯度, 経度」の貼り付けなら今のままで使えます');
+    throw urlErr;
+  }
+  if (url && !/google\.|goo\.gl|g\.co\//i.test(url) && res.lat == null) throw new Error('GoogleマップのURLではないようです');
+  if (res.lat == null || !gmValid(+res.lat, +res.lng)) throw new Error('位置を読み取れませんでした。場所の名前・住所、「43.52954, 142.46469」のような緯度・経度、またはGoogleマップの共有リンクを貼り付けてください');
+  return { lat: Math.round(res.lat * 1e6) / 1e6, lng: Math.round(res.lng * 1e6) / 1e6, name: String(tp.name || res.name || '').slice(0, 80), approximate: !!res.approximate };
+}
+async function gmPaste(id) {
+  const el = $('#' + id);
+  if (!el) return false;
+  try {
+    const t = await navigator.clipboard.readText();
+    if (!t || !t.trim()) throw new Error('empty');
+    el.value = t.trim();
+    return true;
+  } catch (e) {
+    toast('自動で貼り付けできませんでした。入力欄を長押しして「貼り付け」を選んでください', 'err');
+    el.focus();
+    return false;
+  }
 }
 async function gmApplyToEditor() {
   const inp = $('#f_gm'), btn = $('[data-act=gmApply]'), err = $('#fSpot .ferr');
@@ -2509,8 +2558,9 @@ async function gmApplyToEditor() {
     sp.lat = r.lat; sp.lng = r.lng;
     if (!String(sp.title || '').trim() && r.name) sp.title = r.name;
     renderSpotEditor();
-    map.setView([r.lat, r.lng], Math.max(map.getZoom(), 14));
-    toast('位置をGoogleマップの場所に変更しました（保存すると確定します）');
+    map.setView([r.lat, r.lng], Math.max(map.getZoom(), r.approximate ? 12 : 14));
+    toast(r.approximate ? 'おおよその位置にしました。必要なら「地図で選び直す」で調整してください（保存すると確定します）'
+      : '位置をGoogleマップの場所に変更しました（保存すると確定します）');
   } catch (e) {
     if (btn.isConnected) { btn.disabled = false; btn.textContent = '反映'; }
     if (err.isConnected) err.textContent = e.message; else toast(e.message, 'err');
@@ -2519,15 +2569,17 @@ async function gmApplyToEditor() {
 function openGmAdd() {
   openModal(`<div class="mhead"><h3>Googleマップから追加</h3>${X_BTN}</div>
     <form id="fGm" novalidate>
-      <div class="field"><label for="f_gm2">座標または共有リンク</label>
-        <textarea class="inp" id="f_gm2" name="text" rows="3" required placeholder="43.52954769249266, 142.46469628186458&#10;https://maps.app.goo.gl/…"></textarea>
-        <p class="hint" style="line-height:1.7">Googleマップで場所を長押しして出る「緯度, 経度」、または「共有」→「リンクをコピー」を貼り付けてください。両方貼ると、位置は座標を、名前はリンクの場所名を使います。</p></div>
+      <div class="field"><label for="f_gm2">場所の名前・住所・座標・共有リンク</label>
+        <textarea class="inp" id="f_gm2" name="text" rows="4" required placeholder="達古武&#10;〒088-2141 北海道釧路郡釧路町&#10;https://maps.app.goo.gl/…"></textarea>
+        <div class="ta-tools"><button type="button" class="btn btn-ghost btn-sm" data-act="gmPaste" data-id="f_gm2">📋 貼り付け</button></div>
+        ${GM_HOWTO}</div>
       <p class="ferr"></p><button type="submit" class="btn btn-route w-full">この場所でスポットを作る</button></form>`);
   bindForm($('#fGm'), async d => {
     const r = await resolveGmap(d.text);
     closeModal(true);
-    map.setView([r.lat, r.lng], Math.max(map.getZoom(), 14));
+    map.setView([r.lat, r.lng], Math.max(map.getZoom(), r.approximate ? 12 : 14));
     openSpotEditor({ lat: r.lat, lng: r.lng, title: r.name, source: 'map', takenAt: '' });
+    if (r.approximate) toast('住所からのおおよその位置です。必要なら「地図で選び直す」で調整してください');
   });
 }
 /* ---------- spot editor ---------- */
@@ -2545,10 +2597,11 @@ function renderSpotEditor() {
         <div class="ta-tools">${micBtn('f_sm')}</div></div>
       <p class="text-sm mb-4">位置 <span class="num" style="font-size:15px">${Number(sp.lat).toFixed(5)}, ${Number(sp.lng).toFixed(5)}</span>
         <button type="button" class="lnk ml-2" data-act="repick">地図で選び直す</button></p>
-      <div class="field"><label for="f_gm">Googleマップの座標・共有リンクで指定</label>
-        <div class="flex gap-2"><input class="inp" id="f_gm" placeholder="43.52954, 142.46469 または https://maps.app.goo.gl/…" autocomplete="off">
-        <button type="button" class="btn btn-ghost btn-sm" data-act="gmApply" style="flex:none">反映</button></div>
-        <p class="hint">Googleマップで場所を長押しして出る「緯度, 経度」、または「共有」→「リンクをコピー」を貼り付けてください。</p></div>
+      <div class="field"><label for="f_gm">Googleマップの情報で位置を指定</label>
+        <textarea class="inp" id="f_gm" rows="2" placeholder="場所の名前・住所・43.52954, 142.46469・https://maps.app.goo.gl/… など" autocomplete="off"></textarea>
+        <div class="ta-tools"><button type="button" class="btn btn-ghost btn-sm" data-act="gmPaste" data-id="f_gm" data-apply="1">📋 貼り付けて反映</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="gmApply">反映</button></div>
+        ${GM_HOWTO}</div>
       <div class="field"><span class="lbl">写真・動画</span><div id="edMedia" class="edmedia"></div>
         <label class="drop small" data-drop="editor">写真・動画をドロップ、またはタップして選ぶ<input type="file" id="edFiles" accept="image/*,video/*" multiple hidden></label></div>
       <p class="ferr"></p><p id="edProg" class="text-sm muted"></p>
@@ -2556,7 +2609,6 @@ function renderSpotEditor() {
         <button type="submit" class="btn btn-route ml-auto">保存する</button></div>
     </form>`);
   renderEdMedia();
-  $('#f_gm').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); gmApplyToEditor(); } });
   $('#edFiles').addEventListener('change', e => { addEditorFiles([...e.target.files]); e.target.value = ''; });
   bindForm($('#fSpot'), saveSpotFromEditor);
 }
@@ -2742,6 +2794,7 @@ const ACT = {
   },
   deleteSpot: () => deleteSpot(),
   gmApply: () => gmApplyToEditor(),
+  gmPaste: async el => { if (await gmPaste(el.dataset.id) && el.dataset.apply) gmApplyToEditor(); },
   gmAdd: () => { if (requireTrip()) openGmAdd(); },
   repick: () => {
     captureEditorFields();
@@ -2897,7 +2950,7 @@ function openHelp() {
     ${sec('トリップを作る・ルートを読み込む', `<ul>
       <li>右上の<b>＋ 新しいトリップ</b>でタイトル・種類（サイクリング・ドライブ・フェリー・飛行機・その他）・日付を入れて作成します。GPX・KML・GeoJSON を一緒に選ぶと距離や日付が自動で入ります。</li>
       <li>トリップ画面の<b>ルートを読み込む</b>では「スポットから」「ファイル」「URL」「画像から」「テキスト」を選べます。</li>
-      <li>スポットの位置は、Googleマップの「緯度, 経度」や共有リンク（maps.app.goo.gl）を貼り付けて指定できます（スポット編集の「Googleマップの座標・共有リンクで指定」、またはトリップ画面の「Googleマップから追加」）。</li>
+      <li>スポットの位置は、Googleマップ（スマホのアプリも可）の場所の名前・住所・「緯度, 経度」・共有リンク（maps.app.goo.gl）を貼り付けて指定できます（スポット編集の「Googleマップの座標・共有リンクで指定」、またはトリップ画面の「Googleマップから追加」）。</li>
       <li>GPXなどが無くても、スポットを2か所以上登録すれば<b>スポットからルートを自動作成</b>できます（日時の順に、車・自転車・徒歩の道路沿い、または直線で結びます）。自動作成したルートは、スポットを追加・移動・削除すると自動で作り直します。</li>
       <li><b>画像から</b>：記録アプリのアクティビティマップの画面写真から、AIが線と地名を読み取って経路にします。「道路に沿わせる」「向きを反転」で整えてから登録します。</li>
       <li>一覧の<b>GPXをまとめて取り込む</b>で、複数のファイルを一度に登録できます。</li></ul>`)}
