@@ -105,6 +105,9 @@
   .drop { display: block; border: 2px dashed #B6C2BB; border-radius: 12px; padding: 18px 14px; text-align: center; color: var(--muted); font-size: 14px; cursor: pointer; background: #fff; }
   .drop:hover, .drop.over { border-color: var(--route); color: var(--ink); }
   .drop.small { padding: 12px; }
+  .model-pick { margin: 0 0 14px; }
+  .model-pick label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; letter-spacing: .04em; }
+  .model-pick select.inp { padding: 8px 10px; font-size: 15px; }
   .chk { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 12px; }
   .chk input { width: 18px; height: 18px; accent-color: var(--moss); }
 
@@ -472,12 +475,16 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
 const APP_URL = String(CFG.APP_URL || (location.origin + location.pathname)).replace(/index\.html$/, '');
 const CONFIG_LOADED = !!window.WADACHI_CONFIG;
+// Gemini モデル（選択肢は config.js の GEMINI_MODEL_OPTIONS）
+const MODEL_OPTIONS = Array.isArray(CFG.GEMINI_MODEL_OPTIONS) && CFG.GEMINI_MODEL_OPTIONS.length
+  ? CFG.GEMINI_MODEL_OPTIONS : [{ value: '', label: '自動モード（汎用の最新）' }];
+const MODEL_KEY = 'wadachi.geminiModel';
 const MAX_VIDEO_MB = 28;
 
 const TYPE_LABEL = { cycling: 'サイクリング', drive: 'ドライブ', ferry: 'フェリー', plane: '飛行機', other: 'その他' };
@@ -491,6 +498,12 @@ const ls = {
   del(k) { try { localStorage.removeItem(k); } catch (e) {} }
 };
 function safeJSON(s) { try { return JSON.parse(s); } catch (e) { return null; } }
+function initModel() {
+  const saved = ls.get(MODEL_KEY);
+  if (saved !== null && MODEL_OPTIONS.some(o => o.value === saved)) return saved;
+  const def = String(CFG.GEMINI_MODEL || '');
+  return MODEL_OPTIONS.some(o => o.value === def) ? def : '';
+}
 
 const S = {
   token: ls.get('wadachi.token'),
@@ -498,6 +511,7 @@ const S = {
   trips: [], loading: false,
   listTab: 'mine', publicTrips: [], publicLoaded: false, sharedTrips: [], sharedLoaded: false,
   contacts: null, shareEd: null, ov: null, serverVersion: '', pendingTrip: null,
+  model: initModel(), defaultModel: '', lastModel: '',
   comments: [], liked: false, likeCount: 0, editCmt: null, cmtDraft: '',
   trip: null, spots: [],
   route: null, stats: null,
@@ -1511,6 +1525,22 @@ function timelineHtml() {
     </div></li>`;
   }).join('')}</ol>`;
 }
+/* ---------- AIモデル選択 ---------- */
+function modelLabel(v) {
+  const o = MODEL_OPTIONS.find(x => x.value === v);
+  return o ? o.label : (v || '自動モード（汎用の最新）');
+}
+function modelPickerHtml() {
+  return `<div class="model-pick"><label for="aiModel">AIモデル</label>
+    <select id="aiModel" class="inp">${MODEL_OPTIONS.map(o => `<option value="${esc(o.value)}" ${o.value === S.model ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>
+    <p class="hint">選んだモデルが使えない時は、汎用の最新モデルに自動で切り替わります${S.lastModel ? `<br>前回使ったモデル：${esc(S.lastModel)}` : ''}</p></div>`;
+}
+/** AIの応答（model / requestedModel / fallback）を記録して、切替があれば知らせる */
+function noteAiModel(info) {
+  if (!info || !info.model) return '';
+  S.lastModel = info.model;
+  return info.fallback ? `（${info.requestedModel} が使えなかったため ${info.model} で作成）` : '';
+}
 function aiHtml() {
   const t = S.trip;
   const blocks = [
@@ -1525,7 +1555,8 @@ function aiHtml() {
       <textarea id="ai_${mode}" class="inp ai-out" rows="8" readonly>${esc(t[f])}</textarea>
       <div class="ta-tools">${spkBtn('ai_' + mode)}<button class="lnk" data-act="copy" data-target="#ai_${mode}">コピー</button></div></section>`).join('');
   }
-  return `<label class="chk"><input type="checkbox" id="aiPhotos" ${S.aiPhotos ? 'checked' : ''}> 写真に写っているものも読み取る（最大6枚）</label>
+  return `${modelPickerHtml()}
+    <label class="chk"><input type="checkbox" id="aiPhotos" ${S.aiPhotos ? 'checked' : ''}> 写真に写っているものも読み取る（最大6枚）</label>
     ${!S.spots.length && !t.hasRoute ? '<p class="note" style="margin:0 0 12px">ルートやスポットを登録すると、その内容に沿った文章になります。</p>' : ''}
     ${blocks.map(([mode, f, title, desc]) => `<section class="ai">
       <div class="ai-h"><div><h4>${title}</h4><p>${desc}</p></div>
@@ -2091,6 +2122,7 @@ function renderImpImage(el) {
       <input type="file" id="impImg" accept="image/*" hidden></label>
     <p class="hint">記録アプリの「アクティビティマップ」などの画面から、線の形と地名を読み取って経路にします。地名がいくつか写っているほど正確になります。</p>
     <div id="imgPrev"></div>
+    ${modelPickerHtml()}
     <p class="ferr"></p>
     <button type="button" id="imgGo" class="btn btn-route w-full" ${S.imgFile ? '' : 'disabled'}>経路を読み取る</button>`;
   $('#impImg').addEventListener('change', e => { if (e.target.files[0]) setRouteImage(e.target.files[0]); e.target.value = ''; });
@@ -2119,8 +2151,10 @@ async function readRouteImage() {
     const data = await blobToB64(blob);
     let width = 0, height = 0;
     try { const bm = await createImageBitmap(blob); width = bm.width; height = bm.height; if (bm.close) bm.close(); } catch (e) { /* 大きさ不明でも続ける */ }
-    const r = await api('routeFromImage', { data, mimeType: mime, width, height, tripType: (S.trip && S.trip.tripType) || 'cycling' });
+    const r = await api('routeFromImage', { data, mimeType: mime, width, height, tripType: (S.trip && S.trip.tripType) || 'cycling', model: S.model });
     modalLocked = false;
+    const sw = noteAiModel(r.ai);
+    if (sw) toast('経路を読み取りました' + sw);
     S.imgFile = null;
     S.imgRoute = {
       name: r.name || '画像から読み取った経路', method: r.method, waypoints: r.waypoints || [],
@@ -2704,11 +2738,12 @@ async function aiGen(btn) {
   if (S.trip[field] && !confirm('今の文章を新しく作り直しますか？（手で直した部分も上書きされます）')) return;
   btn.disabled = true; btn.textContent = '生成中…';
   try {
-    const r = await api('generateAi', { tripId: S.trip.tripId, mode, usePhotos: S.aiPhotos });
+    const r = await api('generateAi', { tripId: S.trip.tripId, mode, usePhotos: S.aiPhotos, model: S.model });
+    const sw = noteAiModel(r);
     S.trip[field] = r.text;
     syncTripInList({ tripId: S.trip.tripId, [field]: r.text });
     renderPanel();
-    toast('文章を作成しました');
+    toast('文章を作成しました' + sw);
   } catch (e) {
     toast(e.message, 'err');
     if (btn.isConnected) { btn.disabled = false; btn.textContent = S.trip[field] ? '作り直す' : '生成する'; }
@@ -2869,7 +2904,10 @@ function runAct(el, e) { const fn = ACT[el.dataset.act]; if (fn) fn(el, e); }
  * v2：バージョン・同意・使い方
  * ============================================================ */
 const VIS_KEYS = ['private', 'selected', 'members'];
-function verText() { return `わだちログ 画面 v${APP_VERSION}${S.serverVersion ? ' ／ サーバー v' + S.serverVersion : ''}`; }
+function verText() {
+  const m = S.model ? modelLabel(S.model) : ('自動' + (S.defaultModel ? '（' + S.defaultModel + '）' : ''));
+  return `わだちログ 画面 v${APP_VERSION}${S.serverVersion ? ' ／ サーバー v' + S.serverVersion : ''} ／ AIモデル ${m}`;
+}
 
 const AGREE_ITEMS = [
   { k: 'notice', l: '「ご利用にあたっての注意」を読み、内容を理解しました' },
@@ -3410,6 +3448,7 @@ function bindGlobal() {
   $('#modalRoot').addEventListener('mousedown', e => { if (e.target.id === 'modalRoot') closeModal(); });
   document.addEventListener('change', e => {
     if (e.target.id === 'aiPhotos') S.aiPhotos = e.target.checked;
+    if (e.target.id === 'aiModel') { S.model = e.target.value; ls.set(MODEL_KEY, S.model); toast('AIモデル：' + modelLabel(S.model)); }
     if (e.target.dataset && e.target.dataset.sel) setSelected([e.target.dataset.sel], e.target.checked, true);
   });
   document.addEventListener('keydown', e => {
@@ -3462,13 +3501,14 @@ async function boot() {
   renderAll();
   if (!CONFIG_LOADED) console.warn('config.js を読み込めなかったため、index.html の DEFAULT_GAS_URL を使っています');
   if (!S.token) {
-    if (gasReady()) api('ping').then(r => { S.serverVersion = r.serverVersion || ''; if (!S.user) renderPanel(); }).catch(() => {});
+    if (gasReady()) api('ping').then(r => { S.serverVersion = r.serverVersion || ''; S.defaultModel = r.defaultModel || ''; if (!S.user) renderPanel(); }).catch(() => {});
     if (S.pendingTrip) { openAuth('login'); toast('共有されたトリップを見るには、ログインしてください'); }
     return;
   }
   try {
     const r = await api('me');
     S.serverVersion = r.serverVersion || '';
+    S.defaultModel = r.defaultModel || '';
     setSession(null, r.user);
     renderAll();
     await postAuthFlow();

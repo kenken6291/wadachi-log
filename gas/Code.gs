@@ -5,7 +5,7 @@
  * ★ 修正したら必ず再デプロイ：
  *   ［デプロイ］→［デプロイを管理］→ 鉛筆 → バージョン「新バージョン」→［デプロイ］
  */
-const SERVER_VERSION = '2.3.0';
+const SERVER_VERSION = '2.4.0';
 const TERMS_VERSION = '2026-11-04';
 const DEFAULT_APP_URL = 'https://kenken6291.github.io/wadachi-log/';
 
@@ -23,6 +23,17 @@ const TRIP_TYPES = ['cycling', 'drive', 'ferry', 'plane', 'other'];
 const MAX_POINTS = 8000;
 const MAX_MEDIA = 30;
 const MAX_CONTACTS = 100;
+
+/* Gemini モデル
+ *  使うモデルの決め方：画面で選んだモデル → スクリプトプロパティ GEMINI_MODEL → 下の汎用最新モデル
+ *  選んだモデルが使えない（廃止・未公開・名前違い）ときは、汎用最新モデルへ自動で切り替える */
+//   gemini-flash-latest : Googleが常に最新の汎用モデルへ差し替えるエイリアス
+//   gemini-4-hydrogen   : 2026年11月時点の汎用最新モデル（日々の暮らしをサポート）
+//   gemini-3.8-flash    : 最終的な保険
+const FALLBACK_GEMINI_MODELS = ['gemini-flash-latest', 'gemini-4-hydrogen', 'gemini-3.8-flash'];
+const GEMINI_MODEL_PATTERN = /^gemini-[a-z0-9][a-z0-9.\-]{0,60}$/;
+const GEMINI_RETRY_CODES = [500, 503];
+const GEMINI_MAX_ATTEMPTS = 3;
 
 /* ============================================================
  * エントリーポイント
@@ -64,13 +75,13 @@ function doPost(e) {
 }
 
 const PUBLIC_ACTIONS = {
-  ping: () => ({ serverVersion: SERVER_VERSION, termsVersion: TERMS_VERSION }),
+  ping: () => ({ serverVersion: SERVER_VERSION, termsVersion: TERMS_VERSION, defaultModel: resolveGeminiModel_('') }),
   login: req => login_(req),
   register: req => register_(req),
   forgotPassword: req => forgotPassword_(req)
 };
 const ACTIONS = {
-  me: (req, u) => ({ user: userOut_(u), serverVersion: SERVER_VERSION, termsVersion: TERMS_VERSION }),
+  me: (req, u) => ({ user: userOut_(u), serverVersion: SERVER_VERSION, termsVersion: TERMS_VERSION, defaultModel: resolveGeminiModel_('') }),
   agreeTerms: (req, u) => agreeTerms_(req, u),
   changePassword: (req, u) => changePassword_(req, u),
   updateProfile: (req, u) => updateProfile_(req, u),
@@ -134,7 +145,7 @@ function setup() {
 
 function testGemini() {
   const t = gemini_([{ text: '「接続テスト成功」とだけ答えてください。' }], { temperature: 0 });
-  console.log(t);
+  console.log(t.text + '  （使用モデル：' + t.model + (t.fallback ? '／' + t.requestedModel + ' から自動切替' : '') + '）');
 }
 
 function ss_() {
@@ -791,26 +802,68 @@ function getShareOverview_(u) {
 /* ============================================================
  * Gemini
  * ============================================================ */
+/** 使うモデル名を決める（画面の選択 → スクリプトプロパティ → 汎用最新）。不正な名前は無視 */
+function resolveGeminiModel_(requested) {
+  const req = String(requested || '').trim().toLowerCase();
+  if (req && GEMINI_MODEL_PATTERN.test(req)) return req;
+  const p = String(prop_('GEMINI_MODEL') || '').trim().toLowerCase();
+  if (p && GEMINI_MODEL_PATTERN.test(p)) return p;
+  return FALLBACK_GEMINI_MODELS[0];
+}
+
+/** モデルが存在しない（廃止・名前違い・未対応）ことを示す応答か */
+function isModelNotFound_(code, text) {
+  if (code === 404) return true;
+  if (code === 400) return /not found|is not supported|NOT_FOUND|unknown model|invalid model|not available/i.test(text);
+  return false;
+}
+
+/** 1つのモデルを呼ぶ。混雑(500/503)時は少し待って再試行 */
+function callGeminiModel_(model, key, body) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  const opts = { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(body), muteHttpExceptions: true };
+  let code = 0, text = '';
+  for (let i = 1; i <= GEMINI_MAX_ATTEMPTS; i++) {
+    const res = UrlFetchApp.fetch(url, opts);
+    code = res.getResponseCode(); text = res.getContentText();
+    if (code === 200 || GEMINI_RETRY_CODES.indexOf(code) < 0 || i === GEMINI_MAX_ATTEMPTS) break;
+    Utilities.sleep(1500 * i);
+  }
+  return { code: code, text: text };
+}
+
+/**
+ * Gemini 呼び出し
+ *  戻り値：{ text, model（実際に使ったモデル）, requestedModel, fallback（自動切替したか） }
+ *  opt.model：画面で選んだモデル（空なら自動）
+ */
 function gemini_(parts, opt) {
   opt = opt || {};
   const key = prop_('GEMINI_API_KEY');
   if (!key) err_('CONFIG', 'GEMINI_API_KEY が未設定です（GASのスクリプトプロパティに追加してください）');
-  const model = prop_('GEMINI_MODEL') || 'gemini-2.5-flash';
+  const requested = resolveGeminiModel_(opt.model);
   const body = { contents: [{ role: 'user', parts: parts }], generationConfig: { temperature: opt.temperature != null ? opt.temperature : 0.7 } };
   if (opt.json) body.generationConfig.responseMimeType = 'application/json';
   if (opt.system) body.systemInstruction = { parts: [{ text: opt.system }] };
-  const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
-    method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(body), muteHttpExceptions: true
-  });
-  const code = res.getResponseCode();
-  if (code === 429) err_('AI_LIMIT', 'AIの利用回数の上限に達しました。しばらく時間をおいてからお試しください');
-  if (code >= 400) err_('AI', 'AIの呼び出しに失敗しました（' + code + '）：' + res.getContentText().slice(0, 200));
-  const j = JSON.parse(res.getContentText());
+
+  const candidates = [requested].concat(FALLBACK_GEMINI_MODELS.filter(m => m !== requested));
+  let used = requested, r = null;
+  for (let i = 0; i < candidates.length; i++) {
+    used = candidates[i];
+    r = callGeminiModel_(used, key, body);
+    if (!isModelNotFound_(r.code, r.text)) break;
+    console.warn('Geminiモデル「' + used + '」が使えないため次の候補に切り替えます');
+  }
+  if (r.code === 429) err_('AI_LIMIT', 'AIの利用回数の上限に達しました（' + used + '）。しばらく時間をおくか、別のAIモデルを選んでお試しください');
+  if (isModelNotFound_(r.code, r.text)) err_('AI', '使えるAIモデルが見つかりませんでした。スクリプトプロパティ GEMINI_MODEL を確認してください');
+  if (r.code >= 400) err_('AI', 'AIの呼び出しに失敗しました（' + r.code + '／' + used + '）：' + r.text.slice(0, 200));
+  const j = JSON.parse(r.text);
   const c = j.candidates && j.candidates[0];
-  const text = c && c.content && c.content.parts ? c.content.parts.map(p => p.text || '').join('') : '';
+  const text = c && c.content && c.content.parts ? c.content.parts.filter(p => !p.thought).map(p => p.text || '').join('') : '';
   if (!text) err_('AI', 'AIから回答を得られませんでした。もう一度お試しください');
-  return text;
+  return { text: text, model: used, requestedModel: requested, fallback: used !== requested };
 }
+function aiInfo_(g) { return { model: g.model, requestedModel: g.requestedModel, fallback: g.fallback }; }
 
 /** 前置き・指示文（「〜で読み上げてください」など）を取り除く */
 function cleanAiText_(s) {
@@ -878,7 +931,8 @@ function generateAi_(req, u) {
       } catch (e) { /* 読めない写真は飛ばす */ }
     });
   }
-  const text = cleanAiText_(gemini_(parts, { system: AI_SYSTEM, temperature: 0.7 }));
+  const g = gemini_(parts, { system: AI_SYSTEM, temperature: 0.7, model: req.model });
+  const text = cleanAiText_(g.text);
   const field = { summary: 'aiSummary', highlights: 'aiHighlights', sns: 'aiSns' }[mode];
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -886,7 +940,7 @@ function generateAi_(req, u) {
     cur[field] = text.slice(0, 20000); cur.updatedAt = nowIso_();
     update_('Trips', cur);
   } finally { lock.releaseLock(); }
-  return { text: text };
+  return Object.assign({ text: text }, aiInfo_(g));
 }
 
 /* ============================================================
@@ -975,7 +1029,8 @@ function routeFromImage_(req, u) {
     '・line は経路の線を、スタートからゴールの順に60〜150点でなぞる。往復や周回もそのまま。分からなければスタートらしい端から。',
     '・地名が読めない場合は landmarks を空配列に。'
   ].join('\n');
-  const txt = gemini_([{ text: prompt }, { inline_data: { mime_type: mime, data: String(req.data) } }], { json: true, temperature: 0.2 });
+  const g = gemini_([{ text: prompt }, { inline_data: { mime_type: mime, data: String(req.data) } }], { json: true, temperature: 0.2, model: req.model });
+  const txt = g.text;
   let j;
   try { j = JSON.parse(txt.replace(/```json|```/g, '').trim()); } catch (e) { err_('AI', '画像の読み取り結果を解釈できませんでした。別の画像でお試しください'); }
   const lm = (j.landmarks || []).filter(l => isFinite(+l.lat) && isFinite(+l.lng) && isFinite(+l.x) && isFinite(+l.y) && Math.abs(+l.lat) <= 90 && Math.abs(+l.lng) <= 180)
@@ -1029,7 +1084,7 @@ function routeFromImage_(req, u) {
   // フェリー・飛行機は道路に沿わせない
   const snapped = (req.tripType === 'ferry' || req.tripType === 'plane') ? null : snapOsrm_(points, req.tripType);
   return { name: str_(j.name, 80) || '画像から読み取った経路', method: method, waypoints: waypoints.length ? waypoints : lm.map(l => l.name),
-    directionKnown: !!j.directionKnown, points: points, snapped: snapped };
+    directionKnown: !!j.directionKnown, points: points, snapped: snapped, ai: aiInfo_(g) };
 }
 function nearestIdx_(line, l) {
   let bi = 0, bd = Infinity;

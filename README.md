@@ -118,7 +118,7 @@ wadachi-log-data/
 |---|---|---|
 | `GEMINI_API_KEY` | **手動で追加** | Google AI Studio で発行したキー |
 | `APP_URL` | 任意で追加 | `https://kenken6291.github.io/wadachi-log/`（仮パスワードメールに載せるURL） |
-| `GEMINI_MODEL` | 任意 | 省略時 `gemini-2.5-flash` |
+| `GEMINI_MODEL` | 任意 | 「自動モード」のときに使うモデル。省略時は汎用最新（`gemini-flash-latest` → `gemini-4-hydrogen` → `gemini-3.8-flash` の順に試す）。画面の「AIモデル」で選んだものが優先 |
 | `SPREADSHEET_ID` | setupで自動 | 変更不要 |
 | `DRIVE_FOLDER_ID` | setupで自動 | 既存フォルダを使いたい場合はそのIDに書き換え |
 | `TOKEN_SECRET` / `PEPPER` | setupで自動 | **絶対に変更しない**（変えると全員ログイン不可になる） |
