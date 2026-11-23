@@ -5,13 +5,13 @@
  * ★ 修正したら必ず再デプロイ：
  *   ［デプロイ］→［デプロイを管理］→ 鉛筆 → バージョン「新バージョン」→［デプロイ］
  */
-const SERVER_VERSION = '2.4.0';
+const SERVER_VERSION = '2.5.0';
 const TERMS_VERSION = '2026-11-04';
 const DEFAULT_APP_URL = 'https://kenken6291.github.io/wadachi-log/';
 
 const SHEETS = {
   Users: ['userId', 'email', 'displayName', 'salt', 'passwordHash', 'mustChangePassword', 'tokenVersion', 'failedCount', 'lockedUntil', 'createdAt', 'updatedAt', 'lastLoginAt', 'agreedAt', 'termsVersion'],
-  Trips: ['tripId', 'userId', 'title', 'tripType', 'description', 'startDate', 'endDate', 'distanceKm', 'elevationGainM', 'durationSec', 'pointCount', 'routeName', 'routeFileId', 'aiSummary', 'aiHighlights', 'aiSns', 'createdAt', 'updatedAt', 'visibility'],
+  Trips: ['tripId', 'userId', 'title', 'tripType', 'description', 'startDate', 'endDate', 'distanceKm', 'elevationGainM', 'durationSec', 'pointCount', 'routeName', 'routeFileId', 'aiSummary', 'aiHighlights', 'aiSns', 'createdAt', 'updatedAt', 'visibility', 'bgmJson'],
   Waypoints_Media: ['spotId', 'tripId', 'userId', 'lat', 'lng', 'title', 'memo', 'takenAt', 'source', 'mediaJson', 'createdAt', 'updatedAt'],
   Comments: ['commentId', 'tripId', 'userId', 'body', 'createdAt', 'updatedAt'],
   Likes: ['tripId', 'userId', 'createdAt'],
@@ -23,6 +23,8 @@ const TRIP_TYPES = ['cycling', 'drive', 'ferry', 'plane', 'other'];
 const MAX_POINTS = 8000;
 const MAX_MEDIA = 30;
 const MAX_CONTACTS = 100;
+const MAX_BGM_MB = 20; // ルートのBGMとしてドライブに保存できる曲の大きさ
+const BGM_PRESETS = ['calm', 'fresh', 'drive'];
 
 /* Gemini モデル
  *  使うモデルの決め方：画面で選んだモデル → スクリプトプロパティ GEMINI_MODEL → 下の汎用最新モデル
@@ -111,11 +113,14 @@ const ACTIONS = {
   updateContact: (req, u) => updateContact_(req, u),
   removeContact: (req, u) => removeContact_(req, u),
   getShareOverview: (req, u) => getShareOverview_(u),
-  setTripSharing: (req, u) => setTripSharing_(req, u)
+  setTripSharing: (req, u) => setTripSharing_(req, u),
+  setTripBgm: (req, u) => setTripBgm_(req, u),
+  uploadBgm: (req, u) => uploadBgm_(req, u),
+  getBgmAudio: (req, u) => getBgmAudio_(req, u)
 };
 const AGREE_FREE = ['me', 'agreeTerms', 'changePassword', 'updateProfile'];
 const WRITE_ACTIONS = ['agreeTerms', 'changePassword', 'updateProfile', 'saveTrip', 'importTrip', 'saveRoute', 'deleteTrip', 'saveSpot', 'deleteSpot',
-  'addComment', 'updateComment', 'deleteComment', 'toggleLike', 'addContact', 'updateContact', 'removeContact', 'setTripSharing'];
+  'addComment', 'updateComment', 'deleteComment', 'toggleLike', 'addContact', 'updateContact', 'removeContact', 'setTripSharing', 'setTripBgm', 'uploadBgm'];
 
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function err_(code, msg) { const e = new Error(msg); e.code = code; throw e; }
@@ -460,6 +465,7 @@ function tripOut_(t, u, ctx) {
     spotCount: ctx.spotCount != null ? ctx.spotCount : ((ctx.spots || {})[t.tripId] || 0),
     likeCount: (ctx.likes || {})[t.tripId] || 0, commentCount: (ctx.comments || {})[t.tripId] || 0,
     aiSummary: t.aiSummary, aiHighlights: t.aiHighlights, aiSns: t.aiSns,
+    bgm: bgmOut_(t),
     createdAt: t.createdAt, updatedAt: t.updatedAt
   };
   if (isOwner && ctx.shares) { o.shareIds = sharesOf_(t.tripId, ctx.shares); o.shareCount = o.shareIds.length; }
@@ -622,6 +628,7 @@ function deleteTrip_(req, u) {
   const t = ownTrip_(req.tripId, u);
   const spots = rows_('Waypoints_Media').filter(s => s.tripId === t.tripId);
   if (t.routeFileId) trashFile_(t.routeFileId);
+  const oldBgm = bgmOut_(t); if (oldBgm && oldBgm.type === 'drive') trashFile_(oldBgm.fileId);
   try {
     const it = subFolder_('media').getFoldersByName(t.tripId);
     while (it.hasNext()) it.next().setTrashed(true);
@@ -1179,4 +1186,72 @@ function fetchRemote_(req) {
   const blob = res.getBlob();
   if (blob.getBytes().length > 15 * 1048576) err_('FETCH', 'ファイルが大きすぎます（15MBまで）');
   return { text: blob.getDataAsString('UTF-8') };
+}
+
+
+/* ============================================================
+ * ルートのBGM（共有した相手にも同じ曲を流す）
+ *   bgmJson に保存する形：
+ *   { type:'preset', v:'calm'|'fresh'|'drive' }
+ *   { type:'yt', v:動画ID, list:再生リストID, url, name }
+ *   { type:'url', url, name }                  … ネット上の音声ファイル
+ *   { type:'drive', fileId, mimeType, name }   … ドライブ（bgm/トリップID フォルダ）に保存した曲
+ * ============================================================ */
+function bgmOut_(t) {
+  if (!t || !t.bgmJson) return null;
+  try { return cleanBgm_(JSON.parse(t.bgmJson)); } catch (e) { return null; }
+}
+function cleanBgm_(b) {
+  if (!b || typeof b !== 'object') return null;
+  const id = v => (/^[\w-]{6,64}$/.test(String(v || '')) ? String(v) : '');
+  const url = v => { v = str_(v, 1000); return /^https:\/\/\S+$/i.test(v) ? v : ''; };
+  const name = str_(b.name, 80);
+  if (b.type === 'preset') return BGM_PRESETS.indexOf(b.v) >= 0 ? { type: 'preset', v: b.v } : null;
+  if (b.type === 'yt') { const v = id(b.v), list = v ? '' : id(b.list); return v || list ? { type: 'yt', v: v, list: list, url: url(b.url), name: name || 'YouTubeの曲' } : null; }
+  if (b.type === 'url') { const u = url(b.url); return u ? { type: 'url', url: u, name: name || 'ネットの曲' } : null; }
+  if (b.type === 'drive') { const f = /^[\w-]+$/.test(String(b.fileId || '')) ? String(b.fileId) : ''; return f ? { type: 'drive', fileId: f, mimeType: str_(b.mimeType, 80), name: name || '曲' } : null; }
+  return null;
+}
+function writeBgm_(t, b) {
+  const old = bgmOut_(t);
+  if (old && old.type === 'drive' && (!b || b.type !== 'drive' || b.fileId !== old.fileId)) trashFile_(old.fileId);
+  t.bgmJson = b ? JSON.stringify(b) : '';
+  t.updatedAt = nowIso_();
+  update_('Trips', t);
+}
+function setTripBgm_(req, u) {
+  const t = ownTrip_(req.tripId, u);
+  let b = null;
+  if (req.bgm) {
+    b = cleanBgm_(req.bgm);
+    if (!b) err_('VALID', 'BGMの指定が正しくありません');
+    if (b.type === 'drive') { const old = bgmOut_(t); if (!old || old.type !== 'drive' || old.fileId !== b.fileId) err_('VALID', '曲はアップロードしてから設定してください'); }
+  }
+  writeBgm_(t, b);
+  return { bgm: b };
+}
+function uploadBgm_(req, u) {
+  const t = ownTrip_(req.tripId, u);
+  const mime = String(req.mimeType || '') || 'audio/mpeg';
+  if (!/^audio\//.test(mime)) err_('VALID', '音楽ファイルを選んでください');
+  if (!req.data) err_('VALID', 'ファイルが空です');
+  const bytes = Utilities.base64Decode(String(req.data));
+  if (bytes.length > MAX_BGM_MB * 1048576) err_('VALID', '曲のファイルが大きすぎます（' + MAX_BGM_MB + 'MBまで）');
+  const name = str_(req.fileName, 120).replace(/[\\/]/g, '_') || ('bgm_' + Date.now());
+  const f = subFolder_(t.tripId, subFolder_('bgm')).createFile(Utilities.newBlob(bytes, mime, name));
+  let warning = '';
+  try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+  catch (e) { warning = 'Googleドライブの共有設定を変更できなかったため、サーバー経由で曲を読み込みます（少し時間がかかります）'; }
+  const b = { type: 'drive', fileId: f.getId(), mimeType: mime, name: str_(req.title, 80) || name.replace(/\.[^.]+$/, '') };
+  writeBgm_(t, b);
+  return { bgm: b, warning: warning };
+}
+/** ドライブの曲を直接読めない環境向け：閲覧できる人にだけ中身を返す */
+function getBgmAudio_(req, u) {
+  const t = viewTrip_(req.tripId, u);
+  const b = bgmOut_(t);
+  if (!b || b.type !== 'drive') err_('NOT_FOUND', 'このルートにはドライブの曲が設定されていません');
+  let blob;
+  try { blob = DriveApp.getFileById(b.fileId).getBlob(); } catch (e) { err_('NOT_FOUND', '曲のファイルが見つかりません'); }
+  return { mimeType: blob.getContentType() || b.mimeType || 'audio/mpeg', data: Utilities.base64Encode(blob.getBytes()) };
 }

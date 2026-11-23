@@ -235,6 +235,21 @@
   .pb-near img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; background: var(--mist); }
   .pb-near .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pb-add { flex: none; }
+  .bgm-list { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; margin-bottom: 12px; }
+  .bgm-row { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+  .bgm-row.on { border-color: var(--route); background: var(--mist); }
+  .bgm-row .inp { flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px; }
+  .bgm-row .sz { font-size: 11px; color: var(--muted); white-space: nowrap; flex: none; }
+  .bgm-row .ib { flex: none; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 14px; }
+  .bgm-add { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .bgm-add .inp { flex: 1; min-width: 0; }
+  #ytBox { position: absolute; z-index: 815; right: 12px; bottom: 140px; width: 212px; background: #111A17; border-radius: 12px; padding: 4px 6px 6px;
+    box-shadow: 0 10px 28px rgba(20,30,27,.35); color: #fff; }
+  #ytBox .yt-h { display: flex; justify-content: space-between; align-items: center; font-size: 11px; gap: 6px; padding: 0 0 4px 2px; }
+  #ytBox .yt-h span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ytBox .yt-h button { color: #fff; background: none; border: 0; font-size: 16px; width: 22px; flex: none; }
+  #ytBox iframe, #ytPlayer { display: block; width: 200px; height: 200px; border: 0; border-radius: 6px; background: #000; }
+  .bgm-yt { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: 13px; }
   .pb-bgm { display: flex; align-items: center; gap: 4px; flex: none; }
   #playbar #pbVol { flex: none; width: 64px; min-width: 0; }
   .pb-info { background: none; border: 0; padding: 2px 4px; border-radius: 6px; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 4px; }
@@ -290,6 +305,7 @@
     .hide-sm { display: none; }
     .pb-jump { right: 0; left: 0; width: auto; max-width: none; }
     /* 写真カードは上部に小さめに。右上の地図ボタンは避ける */
+    #ytBox { right: 8px; bottom: calc(104px + 8px + 120px); }
     #pbPhoto { top: 8px; left: 8px; right: 56px; width: auto; max-width: none; border-radius: 12px; }
     .pp-stage { aspect-ratio: auto; height: 24vh; }
     .pp-body { padding: 6px 10px 8px; }
@@ -463,16 +479,15 @@
             <option value="calm" selected>🎵 のんびり</option>
             <option value="fresh">🎵 さわやか</option>
             <option value="drive">🎵 ドライブ</option>
-            <option value="file">🎵 自分の曲…</option>
           </select>
           <input id="pbVol" class="hide-sm" type="range" min="0" max="100" value="50" aria-label="BGMの音量" title="BGMの音量">
-          <input id="pbBgmFile" type="file" accept="audio/*" hidden>
         </div>
         <label class="pb-opt" title="写真のある地点で再生を止めて写真を見せます"><input type="checkbox" id="pbStop" checked>写真で停止</label>
         <button id="pbAdd" class="btn btn-route btn-sm pb-add" data-act="pbAdd">📷 <span class="hide-sm">この地点に</span>追加</button>
       </div>
     </div>
     <div id="pbPhoto" class="hidden" role="dialog" aria-label="スポットの写真"></div>
+    <div id="ytBox" class="hidden" aria-label="YouTubeのBGMプレーヤー"><div class="yt-h"><span id="ytTitle">▶ YouTube BGM</span><button data-act="ytClose" aria-label="YouTubeのBGMを止めてBGMなしにする" title="BGMなしにする">×</button></div><div id="ytPlayer"></div></div>
     <div id="dropOverlay" class="hidden">ここに離すと読み込みます<br><span class="text-sm font-normal">ルート：GPX・KML・GeoJSON ／ 写真・動画</span></div>
   </section>
 </main>
@@ -490,7 +505,7 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.10.0';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -894,38 +909,371 @@ const BGM_SONGS = {
   fresh: { bpm: 100, wave: 'triangle', chords: [[62,66,69],[57,61,64],[59,62,66],[55,59,62]], scale: [74,76,78,81,83,86,88,90], drums: 1, arp: 1, mel: .3,  bass: [0,3,4] },
   drive: { bpm: 120, wave: 'sawtooth', chords: [[57,60,64],[53,57,60],[60,64,67],[55,59,62]], scale: [69,72,74,76,79,81,84,86], drums: 2, arp: 1, mel: .35, bass: [0,1,2,3,4,5,6,7] }
 };
-const BGM = { ctx: null, master: null, noise: null, timer: 0, stopT: 0, song: null, step: 0, next: 0, melIdx: 3, playing: false, audio: null, fileUrl: '', fileName: '' };
+const ACT_EXTRA = {}; // ACT より前に定義する機能のボタン処理
+const BGM = { ctx: null, master: null, noise: null, timer: 0, stopT: 0, song: null, step: 0, next: 0, melIdx: 3, playing: false,
+  audio: null, audioId: '', lib: [], urls: {}, preview: null, previewId: '', prevSel: 'calm', autoTrip: '', driveBlob: {}, ytRec: null };
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 function bgmMode() { return $('#pbBgm') ? $('#pbBgm').value : 'off'; }
 function bgmVol() { return (Number($('#pbVol') ? $('#pbVol').value : 50) || 0) / 100; }
-function bgmInitUi() {
-  const sel = $('#pbBgm'), vol = $('#pbVol'), fi = $('#pbBgmFile');
-  if (!sel) return;
-  const saved = ls.get(BGM_KEY);
-  if (saved && saved !== 'file' && BGM_SONGS[saved] || saved === 'off') sel.value = saved;
-  const v = ls.get(BGM_VOL_KEY);
-  if (v !== null && v !== '' && isFinite(+v)) vol.value = v;
-  sel.addEventListener('change', () => {
-    if (sel.value === 'file') { fi.click(); return; }
-    ls.set(BGM_KEY, sel.value);
-    bgmRestart();
+
+/* --- 登録した曲（この端末のブラウザ内 IndexedDB に保存。サーバーには送らない） --- */
+const BGM_DB = 'wadachi_bgm', BGM_STORE = 'songs', BGM_MAX_MB = 40;
+let bgmDbP = null;
+function bgmDb() {
+  if (bgmDbP) return bgmDbP;
+  bgmDbP = new Promise((res, rej) => {
+    if (!window.indexedDB) { rej(new Error('このブラウザでは曲を保存できません')); return; }
+    const rq = indexedDB.open(BGM_DB, 1);
+    rq.onupgradeneeded = () => { if (!rq.result.objectStoreNames.contains(BGM_STORE)) rq.result.createObjectStore(BGM_STORE, { keyPath: 'id' }); };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error || new Error('曲の保存場所を開けませんでした'));
   });
-  vol.addEventListener('input', () => { ls.set(BGM_VOL_KEY, vol.value); bgmApplyVol(); });
-  fi.addEventListener('change', () => {
-    const f = fi.files[0]; fi.value = '';
-    if (!f) { if (!BGM.fileUrl) sel.value = ls.get(BGM_KEY) || 'off'; return; }
-    if (BGM.fileUrl) URL.revokeObjectURL(BGM.fileUrl);
-    BGM.fileUrl = URL.createObjectURL(f); BGM.fileName = f.name;
-    const op = sel.querySelector('option[value=file]');
-    op.textContent = '🎵 ' + (f.name.length > 14 ? f.name.slice(0, 13) + '…' : f.name);
-    sel.value = 'file';
-    if (BGM.audio) { BGM.audio.pause(); BGM.audio = null; }
-    toast('BGM：' + f.name);
-    bgmRestart();
+  bgmDbP.catch(() => { bgmDbP = null; });
+  return bgmDbP;
+}
+async function bgmDbDo(mode, fn) {
+  const db = await bgmDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(BGM_STORE, mode), st = tx.objectStore(BGM_STORE);
+    const rq = fn(st);
+    tx.oncomplete = () => res(rq && rq.result);
+    tx.onerror = tx.onabort = () => rej(tx.error || new Error('曲の保存に失敗しました（端末の空き容量を確認してください）'));
   });
 }
+const bgmDbAll = () => bgmDbDo('readonly', st => st.getAll());
+const bgmDbPut = rec => bgmDbDo('readwrite', st => st.put(rec));
+const bgmDbDel = id => bgmDbDo('readwrite', st => st.delete(id));
+async function bgmLoadLib() {
+  let list = [];
+  try { list = await bgmDbAll() || []; } catch (e) { console.warn(e); }
+  list.sort((a, b) => (a.order ?? a.addedAt) - (b.order ?? b.addedAt));
+  Object.keys(BGM.urls).forEach(id => { if (!list.some(x => x.id === id) && String(BGM.urls[id] || '').startsWith('blob:')) URL.revokeObjectURL(BGM.urls[id]); });
+  const urls = {};
+  list.forEach(x => { urls[x.id] = BGM.urls[x.id] || (x.blob ? URL.createObjectURL(x.blob) : x.url); });
+  BGM.lib = list; BGM.urls = urls;
+  bgmFillSelect();
+  ytSyncBox();
+}
+function bgmFillSelect(want) {
+  const sel = $('#pbBgm');
+  if (!sel) return;
+  const tb = tripBgm();
+  // 保存済みの選択を優先（曲一覧の読み込みが後になっても戻せるように）。「ルートのBGM」は保存せず、そのトリップの間だけ
+  const cur = want || (sel.value === 'trip' && tb ? 'trip' : '') || ls.get(BGM_KEY) || sel.value || 'calm';
+  const o = (v, t) => `<option value="${esc(v)}">${esc(t)}</option>`;
+  sel.innerHTML = (tb ? o('trip', '📌 ルートの曲：' + tripBgmLabel(tb).slice(0, 14)) : '') + o('off', '🔇 BGMなし')
+    + `<optgroup label="おまかせ曲">${o('calm', '🎵 のんびり')}${o('fresh', '🎵 さわやか')}${o('drive', '🎵 ドライブ')}</optgroup>`
+    + (BGM.lib.length ? `<optgroup label="登録した曲">${BGM.lib.map(x => o('song:' + x.id, (x.yt ? '▶ ' : '🎶 ') + (x.name.length > 16 ? x.name.slice(0, 15) + '…' : x.name))).join('')}</optgroup>` : '')
+    + o('manage', '＋ 曲を登録・管理…');
+  sel.value = [...sel.options].some(op => op.value === cur) && cur !== 'manage' ? cur : 'calm';
+  BGM.prevSel = sel.value;
+}
+function bgmSelect(v) {
+  const sel = $('#pbBgm');
+  bgmFillSelect(v);
+  if (sel) { if (sel.value !== 'trip') ls.set(BGM_KEY, sel.value); BGM.prevSel = sel.value; }
+  bgmRestart();
+}
+function bgmInitUi() {
+  const sel = $('#pbBgm'), vol = $('#pbVol');
+  if (!sel) return;
+  const v = ls.get(BGM_VOL_KEY);
+  if (v !== null && v !== '' && isFinite(+v)) vol.value = v;
+  bgmFillSelect(ls.get(BGM_KEY) || 'calm');
+  bgmLoadLib();
+  sel.addEventListener('change', () => {
+    if (sel.value === 'manage') { sel.value = BGM.prevSel; openBgmManager(); return; }
+    bgmSelect(sel.value);
+  });
+  vol.addEventListener('input', () => { ls.set(BGM_VOL_KEY, vol.value); bgmApplyVol(); });
+}
+
+/* --- 曲の登録・管理画面 --- */
+function fmtMB(n) { return n ? (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB' : ''; }
+function openBgmManager() {
+  if (PB.playing) pbPause();
+  openModal(`<div class="mhead"><h3>🎶 BGMの曲を登録・管理</h3>${X_BTN}</div>
+    <p class="hint" style="margin-bottom:10px">登録した曲は<b>この端末のブラウザの中</b>に保存されます（サーバーには送りません）。ほかの端末やほかの人には共有されません。ブラウザのデータを消すと曲も消えます。</p>
+    <div id="bgmTrip"></div>
+    <div id="bgmList" class="bgm-list"></div>
+    <div class="field"><label>端末の音楽ファイルを登録（mp3・m4a・wav など、1曲${BGM_MAX_MB}MBまで・複数可）</label>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer">📁 ファイルを選ぶ<input id="bgmFiles" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac" multiple hidden></label></div>
+    <form id="bgmUrlForm" class="field" novalidate><label for="bgmUrl">YouTube・YouTubeミュージックの曲や再生リスト、またはネット上の音声ファイルのURLを登録</label>
+      <div class="bgm-add"><input class="inp" id="bgmUrlName" placeholder="曲名（省略可）" style="max-width:38%"><input class="inp" id="bgmUrl" type="url" placeholder="https://music.youtube.com/watch?v=… など"></div>
+      <div class="bgm-yt"><button type="button" class="lnk" data-act="ytSearch" data-site="yt">YouTubeで探す ↗</button><button type="button" class="lnk" data-act="ytSearch" data-site="music">YouTubeミュージックで探す ↗</button></div>
+      <p class="hint">探した曲の「共有」→「リンクをコピー」で、URLを上の欄に貼り付けてください。</p>
+      <p class="ferr"></p><div class="bgm-add" style="justify-content:flex-end"><button type="submit" class="btn btn-ghost btn-sm">URLを登録</button></div>
+      <p class="hint">YouTubeの曲は、再生中に地図の右下に小さなプレーヤーが出ます（YouTubeの決まりで、プレーヤーを隠して再生することはできません）。投稿者が埋め込みを許可していない曲は流せません。通信量がかかるので、外出先ではWi-Fiでの利用がおすすめです。著作権のある曲は、個人で楽しむ範囲でお使いください。</p></form>
+    <div class="flex justify-end mt-2"><button class="btn btn-route btn-sm" data-act="closeModal">閉じる</button></div>`);
+  renderBgmList();
+  renderBgmTrip();
+  $('#bgmFiles').addEventListener('change', async e => {
+    const fs = [...e.target.files]; e.target.value = '';
+    await bgmAddFiles(fs);
+  });
+  $('#bgmUrlForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = $('#bgmUrlForm .ferr'); err.textContent = '';
+    const url = $('#bgmUrl').value.trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) { err.textContent = 'http:// か https:// で始まるURLを入れてください'; return; }
+    const yt = ytParse(url);
+    if (yt === false) { err.textContent = 'このYouTubeのURLから曲を読み取れませんでした。曲または再生リストの「共有」→「リンクをコピー」のURLを貼ってください'; return; }
+    if (yt) {
+      const nm = $('#bgmUrlName').value.trim();
+      const rec = { id: 'y' + Date.now().toString(36), name: (nm || (yt.v ? 'YouTubeの曲' : 'YouTubeの再生リスト')).slice(0, 60), autoName: !nm,
+        url, yt, music: /music\.youtube\.com/i.test(url), size: 0, addedAt: Date.now() };
+      try { await bgmDbPut(rec); } catch (x) { err.textContent = x.message; return; }
+      $('#bgmUrl').value = ''; $('#bgmUrlName').value = '';
+      await bgmLoadLib(); renderBgmList();
+      toast('登録しました。「使う」を押してBGMにできます（曲名は最初に再生したときに自動で入ります）');
+      return;
+    }
+    const ok = await bgmTestUrl(url);
+    if (!ok) { err.textContent = 'このURLは音声として再生できませんでした。音声ファイルを直接指すURLか確認してください'; return; }
+    let name = $('#bgmUrlName').value.trim();
+    if (!name) { try { name = decodeURIComponent(new URL(url).pathname.split('/').pop()).replace(/\.[^.]+$/, '') || 'ネットの曲'; } catch (x) { name = 'ネットの曲'; } }
+    const rec = { id: 'u' + Date.now().toString(36), name: name.slice(0, 60), url, size: 0, addedAt: Date.now() };
+    try { await bgmDbPut(rec); } catch (x) { err.textContent = x.message; return; }
+    $('#bgmUrl').value = ''; $('#bgmUrlName').value = '';
+    await bgmLoadLib(); renderBgmList();
+    toast('登録しました：' + rec.name);
+  });
+}
+/* --- このルートのBGM（持ち主だけが設定できる） --- */
+function renderBgmTrip() {
+  const box = $('#bgmTrip');
+  if (!box) return;
+  if (!S.trip || !canEdit() || !gasReady()) {
+    const b = tripBgm();
+    box.innerHTML = b ? `<div class="field" style="border:1px solid var(--line);border-radius:12px;padding:10px 12px"><p class="text-sm">📌 このルートには、持ち主が選んだ曲「<b>${esc(tripBgmLabel(b))}</b>」が設定されています。再生バーの🎵で「📌 ルートの曲」を選ぶと流れます。</p></div>` : '';
+    return;
+  }
+  const b = tripBgm(), o = (v, t) => `<option value="${esc(v)}">${esc(t)}</option>`;
+  box.innerHTML = `<div class="field" style="border:2px solid var(--route);border-radius:12px;padding:10px 12px">
+    <label>📌 このルート「${esc(S.trip.title || '')}」のBGM（共有した相手にも同じ曲が流れます）</label>
+    <p class="text-sm" style="margin-bottom:6px">いまの設定：<b>${b ? esc(tripBgmLabel(b)) : 'なし（見る人それぞれのBGM設定）'}</b></p>
+    <div class="bgm-add"><select id="bgmTripSel" class="inp">
+      ${o('', 'なし（見る人それぞれのBGM設定）')}
+      <optgroup label="おまかせ曲">${o('preset:calm', 'のんびり')}${o('preset:fresh', 'さわやか')}${o('preset:drive', 'ドライブ')}</optgroup>
+      ${BGM.lib.length ? `<optgroup label="登録した曲">${BGM.lib.map(x => o('lib:' + x.id, (x.yt ? '▶ ' : x.blob ? '🎶 ' : '🌐 ') + x.name + (x.blob ? '（ドライブに保存）' : ''))).join('')}</optgroup>` : ''}
+      ${o('upload', '📁 端末の音楽ファイルをドライブに保存して設定…')}
+    </select><button type="button" class="btn btn-route btn-sm" data-act="bgmTripSet">設定する</button></div>
+    <input id="bgmTripFile" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac" hidden>
+    <p class="hint">端末の曲はGoogleドライブに保存されます（1曲${20}MBまで）。YouTubeの曲は、見る人の画面にも小さなプレーヤーが出ます。</p></div>`;
+  $('#bgmTripFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) bgmTripUpload(f, f.name.replace(/\.[^.]+$/, '')); });
+}
+async function bgmTripSave(bgm) {
+  const r = await api('setTripBgm', { tripId: S.trip.tripId, bgm });
+  bgmTripApplied(r.bgm);
+}
+function bgmTripApplied(b) {
+  S.trip.bgm = b || null;
+  BGM.autoTrip = S.trip.tripId;
+  bgmFillSelect(b ? 'trip' : undefined);
+  bgmRestart();
+  renderBgmTrip();
+  toast(b ? 'このルートのBGMを「' + tripBgmLabel(b) + '」にしました' : 'このルートのBGMを解除しました');
+}
+async function bgmTripUpload(blob, title) {
+  if (blob.size > 20 * 1048576) { toast('ドライブに保存できるのは20MBまでの曲です', 'err'); return; }
+  const btn = $('[data-act=bgmTripSet]');
+  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+  try {
+    const data = await blobToB64(blob);
+    const r = await api('uploadBgm', { tripId: S.trip.tripId, fileName: blob.name || (title + '.mp3'), mimeType: blob.type || 'audio/mpeg', data, title });
+    if (r.warning) toast(r.warning, 'err');
+    bgmTripApplied(r.bgm);
+  } catch (e) { toast(e.message, 'err'); }
+  finally { const b2 = $('[data-act=bgmTripSet]'); if (b2) { b2.disabled = false; b2.textContent = '設定する'; } }
+}
+Object.assign(ACT_EXTRA, {
+  bgmTripSet: async () => {
+    const v = $('#bgmTripSel').value;
+    try {
+      if (v === 'upload') { $('#bgmTripFile').click(); return; }
+      if (!v) { await bgmTripSave(null); return; }
+      if (v.startsWith('preset:')) { await bgmTripSave({ type: 'preset', v: v.slice(7) }); return; }
+      const rec = BGM.lib.find(x => 'lib:' + x.id === v);
+      if (!rec) return;
+      if (rec.yt) await bgmTripSave({ type: 'yt', v: rec.yt.v, list: rec.yt.list, url: rec.url, name: rec.name });
+      else if (rec.blob) await bgmTripUpload(rec.blob, rec.name);
+      else if (!/^https:/i.test(rec.url)) toast('共有できるのは https:// で始まるURLの曲だけです', 'err');
+      else await bgmTripSave({ type: 'url', url: rec.url, name: rec.name });
+    } catch (e) { toast(e.message, 'err'); }
+  }
+});
+function bgmTestUrl(url) {
+  return new Promise(res => {
+    const a = new Audio(); let done = false;
+    const end = ok => { if (done) return; done = true; a.removeAttribute('src'); res(ok); };
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => end(true); a.onerror = () => end(false);
+    setTimeout(() => end(true), 8000); // 遅いサーバーは登録だけしておく
+    a.src = url;
+  });
+}
+async function bgmAddFiles(fs) {
+  let n = 0;
+  for (const f of fs) {
+    if (f.type && !f.type.startsWith('audio/') && !/\.(mp3|m4a|aac|wav|ogg|oga|flac|opus)$/i.test(f.name)) { toast(f.name + ' は音声ファイルではありません', 'err'); continue; }
+    if (f.size > BGM_MAX_MB * 1048576) { toast(`${f.name} は大きすぎます（${BGM_MAX_MB}MBまで）`, 'err'); continue; }
+    const rec = { id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: f.name.replace(/\.[^.]+$/, '').slice(0, 60) || '曲',
+      blob: f.slice(0, f.size, f.type || 'audio/mpeg'), size: f.size, addedAt: Date.now() + n };
+    try { await bgmDbPut(rec); n++; } catch (e) { toast(e.message, 'err'); break; }
+  }
+  if (!n) return;
+  await bgmLoadLib(); renderBgmList();
+  toast(n + '曲を登録しました');
+}
+function renderBgmList() {
+  const box = $('#bgmList');
+  if (!box) return;
+  const cur = $('#pbBgm') ? $('#pbBgm').value : '';
+  if (!BGM.lib.length) { box.innerHTML = '<p class="muted text-sm">まだ曲が登録されていません。</p>'; return; }
+  box.innerHTML = BGM.lib.map((x, i) => `<div class="bgm-row ${cur === 'song:' + x.id ? 'on' : ''}">
+      <button class="ib" data-act="bgmPreview" data-id="${esc(x.id)}" aria-label="試聴">${BGM.previewId === x.id ? '■' : '▶'}</button>
+      <input class="inp" data-bgmname="${esc(x.id)}" value="${esc(x.name)}" maxlength="60" aria-label="曲名">
+      <span class="sz num">${x.blob ? fmtMB(x.size) : x.yt ? (x.music ? '▶YTミュージック' : '▶YouTube') : '🌐URL'}</span>
+      ${i > 0 ? `<button class="ib" data-act="bgmUp" data-id="${esc(x.id)}" aria-label="上へ">↑</button>` : ''}
+      <button class="btn btn-ghost btn-sm" data-act="bgmUse" data-id="${esc(x.id)}">${cur === 'song:' + x.id ? '使用中' : '使う'}</button>
+      <button class="ib" data-act="bgmDel" data-id="${esc(x.id)}" aria-label="削除">🗑</button>
+    </div>`).join('');
+  $$('[data-bgmname]', box).forEach(inp => inp.addEventListener('change', async () => {
+    const rec = BGM.lib.find(x => x.id === inp.dataset.bgmname); if (!rec) return;
+    const name = inp.value.trim().slice(0, 60);
+    if (!name) { inp.value = rec.name; return; }
+    rec.name = name;
+    try { await bgmDbPut(rec); bgmFillSelect(); toast('曲名を変更しました'); } catch (e) { toast(e.message, 'err'); }
+  }));
+}
+function bgmStopPreview() {
+  if (BGM.preview) BGM.preview.pause();
+  BGM.preview = null; BGM.previewId = '';
+}
+Object.assign(ACT_EXTRA, {
+  bgmPreview: el => {
+    const id = el.dataset.id, was = BGM.previewId === id;
+    const rec = BGM.lib.find(x => x.id === id);
+    if (rec && rec.yt) { bgmStopPreview(); window.open(rec.url, '_blank', 'noopener'); return; }
+    bgmStopPreview();
+    if (!was && BGM.urls[id]) {
+      BGM.preview = new Audio(BGM.urls[id]); BGM.previewId = id;
+      BGM.preview.volume = Math.min(1, Math.max(0.15, bgmVol()));
+      BGM.preview.onended = () => { bgmStopPreview(); renderBgmList(); };
+      BGM.preview.play().catch(() => { toast('この曲を再生できませんでした', 'err'); bgmStopPreview(); renderBgmList(); });
+    }
+    renderBgmList();
+  },
+  bgmUse: el => { bgmStopPreview(); bgmSelect('song:' + el.dataset.id); renderBgmList(); toast('BGMに設定しました'); },
+  bgmUp: async el => {
+    const i = BGM.lib.findIndex(x => x.id === el.dataset.id); if (i < 1) return;
+    const l = BGM.lib; [l[i - 1], l[i]] = [l[i], l[i - 1]];
+    try { for (let k = 0; k < l.length; k++) { l[k].order = k; await bgmDbPut(l[k]); } } catch (e) { toast(e.message, 'err'); }
+    await bgmLoadLib(); renderBgmList();
+  },
+  bgmDel: async el => {
+    const rec = BGM.lib.find(x => x.id === el.dataset.id); if (!rec) return;
+    if (!confirm(`「${rec.name}」を登録から削除しますか？`)) return;
+    if (BGM.previewId === rec.id) bgmStopPreview();
+    if (BGM.audioId === rec.id) { if (BGM.audio) BGM.audio.pause(); BGM.audio = null; BGM.audioId = ''; }
+    try { await bgmDbDel(rec.id); } catch (e) { toast(e.message, 'err'); return; }
+    await bgmLoadLib(); renderBgmList();
+    ls.set(BGM_KEY, bgmMode());
+    toast('削除しました');
+  }
+});
+/* --- YouTube / YouTubeミュージック（IFrame Player API） --- */
+/** URL → { v: 動画ID, list: 再生リストID }。YouTubeでないURLは null、YouTubeだが読めないURLは false */
+function ytParse(url) {
+  let u; try { u = new URL(url); } catch (e) { return null; }
+  const h = u.hostname.replace(/^(www|m)\./, '');
+  if (!/^(youtube\.com|music\.youtube\.com|youtu\.be|youtube-nocookie\.com)$/.test(h)) return null;
+  const ok = id => id && /^[\w-]{6,64}$/.test(id) ? id : '';
+  let v = '', list = ok(u.searchParams.get('list'));
+  if (h === 'youtu.be') v = ok(u.pathname.split('/')[1]);
+  else if (u.pathname === '/watch') v = ok(u.searchParams.get('v'));
+  else { const m = u.pathname.match(/^\/(shorts|embed|live|v)\/([\w-]+)/); if (m) v = ok(m[2]); }
+  if (v) list = ''; // 曲が指定されていれば、その曲を繰り返す（ミックスリストは埋め込めないことが多いため）
+  if (!v && !list) return false;
+  return { v, list };
+}
+let ytApiP = null;
+function ytApi() {
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (ytApiP) return ytApiP;
+  ytApiP = new Promise((res, rej) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prev) try { prev(); } catch (e) {} res(window.YT); };
+    const sc = document.createElement('script');
+    sc.src = 'https://www.youtube.com/iframe_api'; sc.async = true;
+    sc.onerror = () => { ytApiP = null; rej(new Error('YouTubeを読み込めませんでした（通信を確認してください）')); };
+    document.head.appendChild(sc);
+  });
+  return ytApiP;
+}
+function bgmCurRec() { const r = bgmResolve(); return r.kind === 'yt' ? r.rec : null; }
+/** YouTubeの曲を読み込んでおく（再生ボタンを押したときにすぐ鳴らせるように） */
+async function ytPrepare(rec) {
+  if (!rec || !rec.yt) return;
+  let YT; try { YT = await ytApi(); } catch (e) { toast(e.message, 'err'); return; }
+  const cue = p => {
+    if (rec.yt.v) p.cueVideoById(rec.yt.v);
+    else { p.cuePlaylist({ listType: 'playlist', list: rec.yt.list }); try { p.setLoop(true); } catch (e) {} }
+  };
+  if (BGM.yt && BGM.ytReady) { if (BGM.ytId !== rec.id) { BGM.ytId = rec.id; BGM.ytRec = rec; cue(BGM.yt); } return; }
+  if (BGM.yt) { BGM.ytId = rec.id; BGM.ytRec = rec; BGM.ytPending = rec; return; }
+  BGM.ytId = rec.id; BGM.ytRec = rec; BGM.ytReady = false;
+  BGM.yt = new YT.Player('ytPlayer', {
+    width: 200, height: 200,
+    playerVars: { playsinline: 1, rel: 0, controls: 1, fs: 0, origin: location.origin && location.origin !== 'null' ? location.origin : undefined },
+    events: {
+      onReady: e => {
+        BGM.ytReady = true;
+        const r = BGM.ytPending || rec; BGM.ytPending = null; BGM.ytId = r.id; BGM.ytRec = r;
+        cue(e.target);
+        e.target.setVolume(Math.round(bgmVol() * 100));
+        if (BGM.playing && bgmCurRec() && bgmCurRec().yt) setTimeout(() => ytPlay(), 300);
+      },
+      onStateChange: e => {
+        const r = BGM.lib.find(x => x.id === BGM.ytId) || BGM.ytRec;
+        if (e.data === 1) { // 再生中
+          if (!BGM.playing) { e.target.pauseVideo(); return; } // ルート再生が止まっていれば流さない
+          let t = ''; try { t = (e.target.getVideoData() || {}).title || ''; } catch (x) {}
+          if (t) $('#ytTitle').textContent = '▶ ' + t;
+          if (r && r.autoName && t && BGM.lib.includes(r)) { r.name = t.slice(0, 60); r.autoName = false; bgmDbPut(r).then(() => { bgmFillSelect(); renderBgmList(); }).catch(() => {}); }
+        }
+        if (e.data === 0 && r && r.yt && r.yt.v && BGM.playing) { e.target.seekTo(0, true); e.target.playVideo(); } // 1曲を繰り返す
+      },
+      onError: e => {
+        const msg = { 2: 'URLが正しくありません', 5: 'この曲はここでは再生できません', 100: '曲が見つかりません（削除か非公開）', 101: '投稿者が埋め込み再生を許可していません', 150: '投稿者が埋め込み再生を許可していません' }[e.data] || '再生できませんでした';
+        toast('YouTube：' + msg + '。別の曲を選んでください', 'err');
+      }
+    }
+  });
+}
+function ytPlay() {
+  if (!BGM.yt || !BGM.ytReady) return;
+  try { BGM.yt.setVolume(Math.round(bgmVol() * 100)); BGM.yt.playVideo(); } catch (e) {}
+}
+function ytPause() { if (BGM.yt && BGM.ytReady) try { BGM.yt.pauseVideo(); } catch (e) {} }
+/** プレーヤーの表示：YouTubeの曲を選んでいて、再生バーを開いているときだけ */
+function ytSyncBox() {
+  const box = $('#ytBox'); if (!box) return;
+  const r = bgmCurRec(), show = !!(r && r.yt && PB.on);
+  box.classList.toggle('hidden', !show);
+  if (r && r.yt) { $('#ytTitle').textContent = '▶ ' + r.name; ytPrepare(r); }
+}
+Object.assign(ACT_EXTRA, {
+  ytClose: () => { ytPause(); bgmSelect('off'); toast('BGMなしにしました'); },
+  ytSearch: el => {
+    const q = encodeURIComponent((($('#bgmUrlName') || {}).value || '').trim() || 'ドライブ BGM');
+    window.open(el.dataset.site === 'music' ? 'https://music.youtube.com/search?q=' + q : 'https://www.youtube.com/results?search_query=' + q, '_blank', 'noopener');
+  }
+});
+
 function bgmApplyVol() {
   const v = bgmVol();
+  if (BGM.yt && BGM.ytReady) try { BGM.yt.setVolume(Math.round(v * 100)); } catch (e) {}
   if (BGM.master && BGM.ctx) BGM.master.gain.setTargetAtTime(BGM.playing ? v * 0.35 : 0, BGM.ctx.currentTime, .05);
   if (BGM.audio) BGM.audio.volume = Math.min(1, v);
 }
@@ -943,23 +1291,88 @@ function bgmEnsureCtx() {
   Object.assign(BGM, { ctx, master, noise: buf });
   return ctx;
 }
+/* --- ルートのBGM（持ち主が設定し、共有した相手にも同じ曲が流れる。設定はサーバーに保存） --- */
+const driveAudioUrl = id => `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
+function tripBgm() { return S.trip && S.trip.bgm ? S.trip.bgm : null; }
+function tripBgmLabel(b) {
+  if (!b) return '';
+  if (b.type === 'preset') return ({ calm: 'のんびり', fresh: 'さわやか', drive: 'ドライブ' })[b.v] || 'おまかせ曲';
+  return (b.type === 'yt' ? '▶ ' : '') + (b.name || '曲');
+}
+/** 今選んでいるBGMの中身 */
+function bgmResolve() {
+  const mode = bgmMode();
+  if (BGM_SONGS[mode]) return { kind: 'preset', v: mode };
+  if (mode.startsWith('song:')) {
+    const id = mode.slice(5), rec = BGM.lib.find(x => x.id === id);
+    if (!rec) return { kind: 'off' };
+    return rec.yt ? { kind: 'yt', rec } : { kind: 'audio', id, url: BGM.urls[id] };
+  }
+  if (mode === 'trip') {
+    const b = tripBgm(), tid = S.trip ? S.trip.tripId : '';
+    if (!b) return { kind: 'off' };
+    if (b.type === 'preset') return { kind: 'preset', v: b.v };
+    if (b.type === 'yt') return { kind: 'yt', rec: { id: 'trip_' + tid + '_' + (b.v || b.list), name: b.name, yt: { v: b.v, list: b.list }, autoName: false } };
+    if (b.type === 'url') return { kind: 'audio', id: 'turl:' + b.url, url: b.url };
+    if (b.type === 'drive') return { kind: 'audio', id: 'drv:' + b.fileId, url: BGM.driveBlob[b.fileId] || driveAudioUrl(b.fileId), drive: b.fileId };
+  }
+  return { kind: 'off' };
+}
+/** トリップを開いて再生バーを出したとき：ルートのBGMがあれば最初はそれを選ぶ */
+function bgmTripAuto() {
+  const b = tripBgm(), id = S.trip ? S.trip.tripId : '';
+  if (b && BGM.autoTrip !== id) { BGM.autoTrip = id; bgmFillSelect('trip'); bgmRestart(); }
+  else { bgmFillSelect(); ytSyncBox(); }
+}
+/** ドライブの曲を直接読めなかったとき：サーバー経由で読み込む */
+async function bgmDriveFallback(fileId, audio) {
+  if (BGM.driveBlob[fileId] || audio._fallback) return;
+  audio._fallback = true;
+  try {
+    toast('ルートの曲を読み込んでいます…');
+    const r = await api('getBgmAudio', { tripId: S.trip.tripId });
+    const bin = atob(r.data), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    BGM.driveBlob[fileId] = URL.createObjectURL(new Blob([u8], { type: r.mimeType || 'audio/mpeg' }));
+    if (BGM.audio !== audio) return;
+    audio.src = BGM.driveBlob[fileId];
+    if (BGM.playing) audio.play().catch(() => toast('もう一度 ▶ を押すと曲が流れます'));
+  } catch (e) { toast('ルートの曲を読み込めませんでした：' + e.message, 'err'); }
+}
+
 /** 再生ボタンが押されたとき（ユーザー操作の中で呼ぶ：スマホで音を出すため） */
 function bgmStart() {
   const mode = bgmMode();
   clearTimeout(BGM.stopT);
-  if (mode === 'off') { bgmHalt(); return; }
+  const r = bgmResolve();
+  if (r.kind === 'off') { bgmHalt(); return; }
   BGM.playing = true;
-  if (mode === 'file') {
-    if (!BGM.fileUrl) return;
-    if (!BGM.audio) { BGM.audio = new Audio(BGM.fileUrl); BGM.audio.loop = true; }
+  bgmStopPreview();
+  if (r.kind === 'yt') {
+    if (BGM.audio) BGM.audio.pause();
+    ytSyncBox();
+    if (BGM.ytReady && BGM.ytId === r.rec.id) ytPlay(); // 読み込み中なら、読み込み後に再生する
+    return;
+  }
+  if (r.kind === 'audio') {
+    if (!r.url) { toast('登録した曲が見つかりません'); return; }
+    if (BGM.audioId !== r.id || !BGM.audio) {
+      if (BGM.audio) BGM.audio.pause();
+      const a = new Audio(r.url); a.loop = true; BGM.audio = a; BGM.audioId = r.id;
+      if (r.drive) a.addEventListener('error', () => bgmDriveFallback(r.drive, a));
+    }
     BGM.audio.volume = Math.min(1, bgmVol());
-    BGM.audio.play().catch(() => toast('BGMを再生できませんでした', 'err'));
+    BGM.audio.play().catch(err => {
+      if (r.drive && !BGM.driveBlob[r.drive]) return; // 読み込み失敗時は error イベント側で読み直す
+      if (err && err.name === 'NotAllowedError') toast('もう一度 ▶ を押すと曲が流れます');
+      else toast('BGMを再生できませんでした（ファイルやURLを確認してください）', 'err');
+    });
     return;
   }
   const ctx = bgmEnsureCtx();
   if (!ctx) return;
   if (ctx.state === 'suspended') ctx.resume();
-  const song = BGM_SONGS[mode];
+  const song = BGM_SONGS[r.v];
   if (BGM.song !== song || !BGM.timer) {
     BGM.song = song; BGM.step = 0; BGM.melIdx = 3;
     BGM.next = ctx.currentTime + 0.08;
@@ -973,6 +1386,7 @@ function bgmStart() {
 function bgmStop() {
   BGM.playing = false;
   if (BGM.audio) BGM.audio.pause();
+  ytPause();
   if (!BGM.ctx || !BGM.timer) return;
   const g = BGM.master.gain, t = BGM.ctx.currentTime;
   g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + 0.6);
@@ -986,7 +1400,10 @@ function bgmHalt() {
 }
 /** BGMの種類を変えたとき */
 function bgmRestart() {
-  if (BGM.audio && bgmMode() !== 'file') BGM.audio.pause();
+  if (BGM.audio && bgmResolve().id !== BGM.audioId) BGM.audio.pause();
+  const r = bgmCurRec();
+  if (!(r && r.yt)) ytPause();
+  ytSyncBox();
   clearInterval(BGM.timer); BGM.timer = 0; BGM.song = null;
   if (PB.playing) bgmStart(); else BGM.playing = false;
 }
@@ -1061,6 +1478,7 @@ function showPlaybar(show) {
   if (show) {
     if (!PB.marker) PB.marker = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="pb-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 1000 });
     PB.marker.addTo(map);
+    setTimeout(bgmTripAuto, 0);
     $('#pbAdd').classList.toggle('hidden', !canEdit());
     PB.nearId = undefined;
     pbSet(PB.frac);
@@ -1072,6 +1490,7 @@ function showPlaybar(show) {
     closePbJump();
     PB.shown.clear();
     if (PB.marker) PB.marker.remove();
+    ytSyncBox();
   }
 }
 function pbSet(f) {
@@ -1768,6 +2187,7 @@ function openModal(html, opt = {}) {
 function closeModal(force) {
   if (modalLocked && !force) return;
   modalLocked = false;
+  bgmStopPreview();
   const root = $('#modalRoot');
   $$('[data-objurl]', root).forEach(el => URL.revokeObjectURL(el.dataset.objurl));
   root.classList.add('hidden');
@@ -3081,7 +3501,7 @@ const ACT = {
     openSpotEditor(JSON.parse(JSON.stringify(s)));
   }
 };
-function runAct(el, e) { const fn = ACT[el.dataset.act]; if (fn) fn(el, e); }
+function runAct(el, e) { const fn = ACT[el.dataset.act] || ACT_EXTRA[el.dataset.act]; if (fn) fn(el, e); }
 
 /* ============================================================
  * v2：バージョン・同意・使い方
@@ -3181,7 +3601,8 @@ function openHelp() {
       <li>スポットの「編集」で名前・日時・メモ・写真を直せます。</li></ul>`)}
     ${sec('再生・地図に重ねて表示', `<ul>
       <li><b>ルートを再生</b>でルートを走るアニメーションを表示します。写真のある地点で止まって写真を見せます。</li>
-      <li>再生バーの<b>🎵 BGM</b>で、再生中に流す音楽（のんびり／さわやか／ドライブ）を選べます。「自分の曲…」を選ぶと、端末内の音楽ファイルを流せます（ファイルはどこにも送信されません）。</li>
+      <li>再生バーの<b>🎵 BGM</b>で、再生中に流す音楽（のんびり／さわやか／ドライブ）を選べます。「＋ 曲を登録・管理…」から、端末の音楽ファイルやYouTube・YouTubeミュージックの曲や再生リストのURL、ネット上の音声ファイルのURLを何曲でも登録でき、次回からも選べます（曲はこの端末のブラウザ内に保存され、どこにも送信されません）。</li>
+      <li>自分のルートなら、同じ画面の「<b>📌 このルートのBGM</b>」で曲を設定できます。設定した曲は共有した相手にも流れます（端末の曲はGoogleドライブに保存されます）。</li>
       <li>標高グラフをなぞると、地図上にその地点を表示します。</li>
       <li>一覧のチェックボックスで、複数のルートを地図に重ねて表示できます。</li></ul>`)}
     ${sec('音声入力・読み上げ', `<ul>
