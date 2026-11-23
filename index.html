@@ -235,6 +235,8 @@
   .pb-near img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; background: var(--mist); }
   .pb-near .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pb-add { flex: none; }
+  .pb-bgm { display: flex; align-items: center; gap: 4px; flex: none; }
+  #playbar #pbVol { flex: none; width: 64px; min-width: 0; }
   .pb-info { background: none; border: 0; padding: 2px 4px; border-radius: 6px; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 4px; }
   .pb-info:hover { background: var(--mist); }
   .pb-jump { position: absolute; right: 0; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid var(--line);
@@ -280,9 +282,11 @@
     #pbNear.empty { display: none; }
     .pb-near img { width: 26px; height: 26px; }
     #pbSpeed { order: 6; font-size: 12px; padding: 3px 4px; }
-    .pb-opt { order: 7; }
-    #pbAdd { order: 8; margin-left: auto; padding: 6px 10px; }
-    .pb-x { order: 9; width: 24px; }
+    .pb-bgm { order: 7; }
+    #pbBgm { font-size: 12px; padding: 3px 4px; }
+    .pb-opt { order: 8; }
+    #pbAdd { order: 9; margin-left: auto; padding: 6px 10px; }
+    .pb-x { order: 10; width: 24px; }
     .hide-sm { display: none; }
     .pb-jump { right: 0; left: 0; width: auto; max-width: none; }
     /* 写真カードは上部に小さめに。右上の地図ボタンは避ける */
@@ -453,6 +457,17 @@
       <span class="pb-br" aria-hidden="true"></span>
       <div class="pb-row2">
         <div id="pbNear" class="pb-near empty"><span class="muted">再生を止めた地点に写真・動画を登録できます</span></div>
+        <div class="pb-bgm" title="再生中に流すBGM">
+          <select id="pbBgm" aria-label="BGM">
+            <option value="off">🔇 BGMなし</option>
+            <option value="calm" selected>🎵 のんびり</option>
+            <option value="fresh">🎵 さわやか</option>
+            <option value="drive">🎵 ドライブ</option>
+            <option value="file">🎵 自分の曲…</option>
+          </select>
+          <input id="pbVol" class="hide-sm" type="range" min="0" max="100" value="50" aria-label="BGMの音量" title="BGMの音量">
+          <input id="pbBgmFile" type="file" accept="audio/*" hidden>
+        </div>
         <label class="pb-opt" title="写真のある地点で再生を止めて写真を見せます"><input type="checkbox" id="pbStop" checked>写真で停止</label>
         <button id="pbAdd" class="btn btn-route btn-sm pb-add" data-act="pbAdd">📷 <span class="hide-sm">この地点に</span>追加</button>
       </div>
@@ -475,7 +490,7 @@
  * 設定：GASのURLは config.js の WADACHI_CONFIG.GAS_URL で指定します
  *   config.js が読めなかったときだけ、下の DEFAULT_GAS_URL を使います
  * ============================================================ */
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwXbfaUtU6Vf8cwjY0z7GpMz8U5HTz6XqUjTjEQfFGxF01BMjYEMOio0kzrGl2CCbSn_Q/exec';
 const CFG = window.WADACHI_CONFIG || {};
 const GAS_URL = String(CFG.GAS_URL || DEFAULT_GAS_URL).trim();
@@ -869,6 +884,172 @@ function bindProfile() {
   svg.addEventListener('pointerleave', leave);
 }
 
+/* ---------- 再生中のBGM ----------
+ * 音源ファイルは使わず、Web Audio API でその場で曲を生成する（著作権の心配なし・通信なし）。
+ * 「自分の曲…」では端末内の音声ファイルをループ再生する（ファイルはどこにも送らない）。 */
+const BGM_KEY = 'wadachi_bgm', BGM_VOL_KEY = 'wadachi_bgm_vol';
+const BGM_SONGS = {
+  // bpm、和音（1小節ずつ）、メロディ用の音階、各パートの有無
+  calm:  { bpm: 72,  wave: 'triangle', chords: [[60,64,67],[57,60,64],[53,57,60],[55,59,62]], scale: [72,74,76,79,81,84,86,88], drums: 0, arp: 0, mel: .5,  bass: [0,4] },
+  fresh: { bpm: 100, wave: 'triangle', chords: [[62,66,69],[57,61,64],[59,62,66],[55,59,62]], scale: [74,76,78,81,83,86,88,90], drums: 1, arp: 1, mel: .3,  bass: [0,3,4] },
+  drive: { bpm: 120, wave: 'sawtooth', chords: [[57,60,64],[53,57,60],[60,64,67],[55,59,62]], scale: [69,72,74,76,79,81,84,86], drums: 2, arp: 1, mel: .35, bass: [0,1,2,3,4,5,6,7] }
+};
+const BGM = { ctx: null, master: null, noise: null, timer: 0, stopT: 0, song: null, step: 0, next: 0, melIdx: 3, playing: false, audio: null, fileUrl: '', fileName: '' };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function bgmMode() { return $('#pbBgm') ? $('#pbBgm').value : 'off'; }
+function bgmVol() { return (Number($('#pbVol') ? $('#pbVol').value : 50) || 0) / 100; }
+function bgmInitUi() {
+  const sel = $('#pbBgm'), vol = $('#pbVol'), fi = $('#pbBgmFile');
+  if (!sel) return;
+  const saved = ls.get(BGM_KEY);
+  if (saved && saved !== 'file' && BGM_SONGS[saved] || saved === 'off') sel.value = saved;
+  const v = ls.get(BGM_VOL_KEY);
+  if (v !== null && v !== '' && isFinite(+v)) vol.value = v;
+  sel.addEventListener('change', () => {
+    if (sel.value === 'file') { fi.click(); return; }
+    ls.set(BGM_KEY, sel.value);
+    bgmRestart();
+  });
+  vol.addEventListener('input', () => { ls.set(BGM_VOL_KEY, vol.value); bgmApplyVol(); });
+  fi.addEventListener('change', () => {
+    const f = fi.files[0]; fi.value = '';
+    if (!f) { if (!BGM.fileUrl) sel.value = ls.get(BGM_KEY) || 'off'; return; }
+    if (BGM.fileUrl) URL.revokeObjectURL(BGM.fileUrl);
+    BGM.fileUrl = URL.createObjectURL(f); BGM.fileName = f.name;
+    const op = sel.querySelector('option[value=file]');
+    op.textContent = '🎵 ' + (f.name.length > 14 ? f.name.slice(0, 13) + '…' : f.name);
+    sel.value = 'file';
+    if (BGM.audio) { BGM.audio.pause(); BGM.audio = null; }
+    toast('BGM：' + f.name);
+    bgmRestart();
+  });
+}
+function bgmApplyVol() {
+  const v = bgmVol();
+  if (BGM.master && BGM.ctx) BGM.master.gain.setTargetAtTime(BGM.playing ? v * 0.35 : 0, BGM.ctx.currentTime, .05);
+  if (BGM.audio) BGM.audio.volume = Math.min(1, v);
+}
+function bgmEnsureCtx() {
+  if (BGM.ctx) return BGM.ctx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  const ctx = new AC();
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 4;
+  comp.connect(ctx.destination);
+  const master = ctx.createGain(); master.gain.value = 0; master.connect(comp);
+  const len = ctx.sampleRate * 0.5, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  Object.assign(BGM, { ctx, master, noise: buf });
+  return ctx;
+}
+/** 再生ボタンが押されたとき（ユーザー操作の中で呼ぶ：スマホで音を出すため） */
+function bgmStart() {
+  const mode = bgmMode();
+  clearTimeout(BGM.stopT);
+  if (mode === 'off') { bgmHalt(); return; }
+  BGM.playing = true;
+  if (mode === 'file') {
+    if (!BGM.fileUrl) return;
+    if (!BGM.audio) { BGM.audio = new Audio(BGM.fileUrl); BGM.audio.loop = true; }
+    BGM.audio.volume = Math.min(1, bgmVol());
+    BGM.audio.play().catch(() => toast('BGMを再生できませんでした', 'err'));
+    return;
+  }
+  const ctx = bgmEnsureCtx();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume();
+  const song = BGM_SONGS[mode];
+  if (BGM.song !== song || !BGM.timer) {
+    BGM.song = song; BGM.step = 0; BGM.melIdx = 3;
+    BGM.next = ctx.currentTime + 0.08;
+    clearInterval(BGM.timer);
+    BGM.timer = setInterval(bgmSchedule, 25);
+  }
+  const g = BGM.master.gain, t = ctx.currentTime;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(bgmVol() * 0.35, t + 1.2);
+}
+/** 一時停止・終了：ふわっと消す */
+function bgmStop() {
+  BGM.playing = false;
+  if (BGM.audio) BGM.audio.pause();
+  if (!BGM.ctx || !BGM.timer) return;
+  const g = BGM.master.gain, t = BGM.ctx.currentTime;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + 0.6);
+  clearTimeout(BGM.stopT);
+  BGM.stopT = setTimeout(bgmHalt, 700);
+}
+function bgmHalt() {
+  clearInterval(BGM.timer); BGM.timer = 0; BGM.song = null;
+  if (BGM.audio && !BGM.playing) BGM.audio.pause();
+  if (BGM.ctx && BGM.ctx.state === 'running' && !BGM.playing) BGM.ctx.suspend();
+}
+/** BGMの種類を変えたとき */
+function bgmRestart() {
+  if (BGM.audio && bgmMode() !== 'file') BGM.audio.pause();
+  clearInterval(BGM.timer); BGM.timer = 0; BGM.song = null;
+  if (PB.playing) bgmStart(); else BGM.playing = false;
+}
+function bgmSchedule() {
+  const ctx = BGM.ctx, song = BGM.song;
+  if (!ctx || !song) return;
+  const stepDur = 60 / song.bpm / 2; // 8分音符
+  if (BGM.next < ctx.currentTime - 0.2) BGM.next = ctx.currentTime + 0.05; // タブが裏に回って遅れたら、まとめ鳴らしせず追いつく
+  while (BGM.next < ctx.currentTime + 0.25) {
+    bgmPlayStep(song, BGM.step, BGM.next, stepDur);
+    BGM.step = (BGM.step + 1) % (song.chords.length * 8);
+    BGM.next += stepDur;
+  }
+}
+function bgmPlayStep(song, step, t, sd) {
+  const bar = Math.floor(step / 8), s = step % 8, ch = song.chords[bar];
+  const bd = sd * 8;
+  if (s === 0) ch.forEach(n => bgmTone(mtof(n), t, bd * 0.98, { type: 'sine', gain: 0.07, attack: 0.4, release: 0.8, cutoff: 1800 })); // パッド
+  if (song.bass.includes(s)) {
+    const oct = song.drums === 2 && s % 2 ? 12 : 0;
+    bgmTone(mtof(ch[0] - 24 + oct), t, sd * (song.drums === 2 ? 0.8 : 1.8), { type: song.drums === 2 ? 'sawtooth' : 'triangle', gain: 0.16, attack: 0.01, release: 0.12, cutoff: 600 });
+  }
+  if (song.arp) {
+    const pat = [0, 1, 2, 1, 0, 2, 1, 2];
+    bgmTone(mtof(ch[pat[s]] + 12), t, sd * 0.7, { type: song.wave, gain: song.wave === 'sawtooth' ? 0.035 : 0.06, attack: 0.005, release: 0.15, cutoff: 2600 });
+  }
+  if ((s % 2 === 0 || !song.arp) && Math.random() < song.mel) { // メロディ：音階の上をゆるく歩く
+    BGM.melIdx = Math.max(0, Math.min(song.scale.length - 1, BGM.melIdx + [-2, -1, -1, 0, 1, 1, 2][Math.floor(Math.random() * 7)]));
+    const len = song.arp ? sd * 1.8 : sd * 3;
+    bgmTone(mtof(song.scale[BGM.melIdx]), t, len, { type: 'triangle', gain: 0.075, attack: 0.02, release: 0.5, cutoff: 3200 });
+  }
+  if (song.drums) {
+    if (song.drums === 2 ? s % 2 === 0 : (s === 0 || s === 4)) bgmKick(t);
+    if (s % 2 === 1) bgmHat(t, song.drums === 2 ? 0.05 : 0.035);
+    if (song.drums === 2 && (s === 2 || s === 6)) bgmSnare(t);
+  }
+}
+function bgmTone(freq, t, dur, o) {
+  const ctx = BGM.ctx, osc = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  osc.type = o.type; osc.frequency.value = freq;
+  f.type = 'lowpass'; f.frequency.value = o.cutoff || 4000;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(o.gain, t + o.attack);
+  g.gain.setValueAtTime(o.gain, t + Math.max(o.attack, dur));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(o.attack, dur) + o.release);
+  osc.connect(f); f.connect(g); g.connect(BGM.master);
+  osc.start(t); osc.stop(t + Math.max(o.attack, dur) + o.release + 0.05);
+}
+function bgmKick(t) {
+  const ctx = BGM.ctx, osc = ctx.createOscillator(), g = ctx.createGain();
+  osc.frequency.setValueAtTime(140, t); osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+  osc.connect(g); g.connect(BGM.master); osc.start(t); osc.stop(t + 0.3);
+}
+function bgmNoise(t, dur, gain, type, freq) {
+  const ctx = BGM.ctx, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = BGM.noise; f.type = type; f.frequency.value = freq;
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(BGM.master); src.start(t); src.stop(t + dur + 0.02);
+}
+function bgmHat(t, gain) { bgmNoise(t, 0.05, gain, 'highpass', 7000); }
+function bgmSnare(t) { bgmNoise(t, 0.16, 0.14, 'bandpass', 1800); }
+
 /* ---------- playback ---------- */
 const PB = { on: false, playing: false, frac: 0, last: 0, raf: 0, marker: null, nearId: null, hold: false, shown: new Set(), card: null, cardT: 0, mk: null, prevDist: -1 };
 const PP_SEC = { photo: 3, video: 3.5 }; // 1枚あたりの表示秒数
@@ -1081,12 +1262,14 @@ function pbPlay() {
   PB.startDist = d0; PB.prevDist = d0 - 1; // 今いる地点のスポットも拾う
   PB.playing = true; PB.last = 0; PB.nearId = undefined;
   const b = $('#pbBtn'); b.textContent = '❚❚'; b.setAttribute('aria-label', '一時停止');
+  bgmStart();
   PB.raf = requestAnimationFrame(pbTick);
 }
 function pbPause() {
   PB.playing = false;
   PB.hold = false;
   cancelAnimationFrame(PB.raf);
+  bgmStop();
   if (PB.card) { clearTimeout(PB.cardT); pbCardBar(false); } // カードは残し、自動送りだけ止める
   const b = $('#pbBtn'); b.textContent = '▶'; b.setAttribute('aria-label', '再生');
 }
@@ -2998,6 +3181,7 @@ function openHelp() {
       <li>スポットの「編集」で名前・日時・メモ・写真を直せます。</li></ul>`)}
     ${sec('再生・地図に重ねて表示', `<ul>
       <li><b>ルートを再生</b>でルートを走るアニメーションを表示します。写真のある地点で止まって写真を見せます。</li>
+      <li>再生バーの<b>🎵 BGM</b>で、再生中に流す音楽（のんびり／さわやか／ドライブ）を選べます。「自分の曲…」を選ぶと、端末内の音楽ファイルを流せます（ファイルはどこにも送信されません）。</li>
       <li>標高グラフをなぞると、地図上にその地点を表示します。</li>
       <li>一覧のチェックボックスで、複数のルートを地図に重ねて表示できます。</li></ul>`)}
     ${sec('音声入力・読み上げ', `<ul>
@@ -3463,6 +3647,7 @@ function bindGlobal() {
   });
   $('#fileRoute').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) handleDroppedFiles([f]); });
   $('#filePhotos').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) addMediaFlow(fs); });
+  bgmInitUi();
   $('#pbRange').addEventListener('input', e => { pbPause(); pbHideCard(); PB.shown.clear(); pbSet(Number(e.target.value) / 1000); });
 
   let dragN = 0;
